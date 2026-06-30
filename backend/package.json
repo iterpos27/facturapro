@@ -1,19 +1,29 @@
 {
   "name": "backend",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "API backend de FacturaPro",
+  "main": "server.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node server.js",
+    "db:init": "node init_db.js",
+    "db:migrate": "node migrate.js",
+    "db:migrate:rename": "node migrate_rename.js",
+    "db:migrate:phase1": "node migrate_phase1.js",
+    "db:migrate:phase2-3": "node migrate_phase2_3.js",
+    "db:migrate:phase4": "node migrate_phase4.js",
+    "db:drop": "node migrate_drop.js",
+    "db:productos": "node create_productos_table.js"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "bcryptjs": "^3.0.3",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
+    "jsonwebtoken": "^9.0.3",
     "pg": "^8.22.0"
   }
 }

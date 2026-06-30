@@ -8,10 +8,15 @@ node_modules/
 .env.local
 .env.*.local
 /backend/.env
+/frontend/.env
 
 # Compilaciones y dist
 /frontend/dist/
 /frontend/build/
+
+# Material auxiliar local
+/backend/scratch/
+/coreui-free-react-admin-template-main/
 
 # Archivos del sistema operativo e IDEs
 .DS_Store
