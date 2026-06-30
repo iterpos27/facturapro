@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import Swal from 'sweetalert2';
-import { apiUrl } from '../lib/api';
+import { apiFetch, apiUrl } from '../lib/api';
 
 export default function CategoryManager() {
   // 1. ==========================================
@@ -27,7 +27,7 @@ export default function CategoryManager() {
   const fetchCategories = async () => {
     setLoading(true);
     try {
-      const response = await fetch(apiUrl('/api/categories'));
+      const response = await apiFetch('/api/categories');
       if (!response.ok) throw new Error('Error al conectar con la base de datos.');
       const data = await response.json();
       setCategories(data);
@@ -100,7 +100,7 @@ export default function CategoryManager() {
 
     if (result.isConfirmed) {
       try {
-        const response = await fetch(apiUrl(`/api/categories/${id}`), {
+        const response = await apiFetch(`/api/categories/${id}`, {
           method: 'DELETE',
         });
         const resultData = await response.json();
@@ -136,7 +136,7 @@ export default function CategoryManager() {
     const method = editingCategory ? 'PUT' : 'POST';
 
     try {
-      const response = await fetch(url, {
+      const response = await apiFetch(url.replace(/^https?:\/\/[^/]+/, ''), {
         method: method,
         headers: {
           'Content-Type': 'application/json',

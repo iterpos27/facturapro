@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import Swal from 'sweetalert2';
-import { apiUrl } from '../lib/api';
+import { apiFetch } from '../lib/api';
 
 export default function Login({ onLoginSuccess }) {
   const [usernameOrEmail, setUsernameOrEmail] = useState('');
@@ -23,7 +23,7 @@ export default function Login({ onLoginSuccess }) {
 
     setLoading(true);
     try {
-      const response = await fetch(apiUrl('/api/auth/login'), {
+      const response = await apiFetch('/api/auth/login', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

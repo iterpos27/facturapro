@@ -9,9 +9,13 @@ const pool = new Pool({
   port: process.env.DB_PORT,
 });
 
+const shouldLogSql = process.env.DB_LOG_SQL === 'true';
+
 module.exports = {
   query: (text, params) => {
-    console.log('SQL Executed:', text);
+    if (shouldLogSql) {
+      console.log('SQL Executed:', text);
+    }
     return pool.query(text, params);
   },
   pool

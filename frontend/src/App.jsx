@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-// Importamos los componentes de CoreUI React
 import {
   CSidebar,
   CSidebarBrand,
@@ -13,8 +12,6 @@ import {
   CContainer,
   CFooter,
 } from '@coreui/react';
-
-// Importamos el componente de Iconos de CoreUI
 import CIcon from '@coreui/icons-react';
 import {
   cilSpeedometer,
@@ -30,7 +27,6 @@ import {
   cilList,
 } from '@coreui/icons';
 
-// Importamos Login y los gestores de módulos
 import Login from './components/Login';
 import ClientManager from './components/ClientManager';
 import ProductManager from './components/ProductManager';
@@ -42,72 +38,109 @@ import SupplierManager from './components/SupplierManager';
 import InventoryManager from './components/InventoryManager';
 import CashRegisterManager from './components/CashRegisterManager';
 import InvoiceManager from './components/InvoiceManager';
+import { apiFetch, AUTH_LOGOUT_EVENT, clearSession } from './lib/api';
 
 function App() {
-  // Estado para el usuario autenticado
   const [currentUser, setCurrentUser] = useState(null);
-  
-  // Estado para saber qué pestaña lateral está activa
+  const [sessionLoading, setSessionLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('dashboard');
-  
-  // Estado para controlar si el sidebar está visible (para responsivo)
   const [sidebarVisible, setSidebarVisible] = useState(true);
 
-  // Al montar el componente, verificar si hay sesión activa en localStorage
-  useEffect(() => {
-    const token = localStorage.getItem('token');
-    const userStr = localStorage.getItem('user');
-    if (token && userStr) {
-      try {
-        setCurrentUser(JSON.parse(userStr));
-      } catch (e) {
-        console.error('Error al restaurar sesión:', e);
-        handleLogout();
-      }
-    }
-  }, []);
-
   const handleLogout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
+    clearSession();
     setCurrentUser(null);
     setActiveTab('dashboard');
+    setSessionLoading(false);
   };
 
-  // Renderizado condicional según la pestaña seleccionada
+  useEffect(() => {
+    let mounted = true;
+
+    const handleForcedLogout = () => {
+      handleLogout();
+    };
+
+    const restoreSession = async () => {
+      const token = localStorage.getItem('token');
+      const userStr = localStorage.getItem('user');
+
+      if (!token || !userStr) {
+        if (mounted) {
+          setSessionLoading(false);
+        }
+        return;
+      }
+
+      try {
+        const localUser = JSON.parse(userStr);
+        const response = await apiFetch('/api/auth/me');
+
+        if (!response.ok) {
+          throw new Error('La sesion no es valida.');
+        }
+
+        const data = await response.json();
+        const user = data.user || localUser;
+        localStorage.setItem('user', JSON.stringify(user));
+
+        if (mounted) {
+          setCurrentUser(user);
+        }
+      } catch (error) {
+        console.error('Error al restaurar sesion:', error);
+        clearSession();
+        if (mounted) {
+          setCurrentUser(null);
+        }
+      } finally {
+        if (mounted) {
+          setSessionLoading(false);
+        }
+      }
+    };
+
+    restoreSession();
+    window.addEventListener(AUTH_LOGOUT_EVENT, handleForcedLogout);
+
+    return () => {
+      mounted = false;
+      window.removeEventListener(AUTH_LOGOUT_EVENT, handleForcedLogout);
+    };
+  }, []);
+
   const renderContent = () => {
     switch (activeTab) {
       case 'dashboard':
         return (
           <div className="card shadow-sm border">
             <div className="card-body p-4">
-              <h1 className="text-dark fw-bold mb-3">¡Bienvenido al Sistema, {currentUser?.username}!</h1>
+              <h1 className="text-dark fw-bold mb-3">Bienvenido al sistema, {currentUser?.username}</h1>
               <p className="text-secondary mb-4">
-                Has iniciado sesión con el rol de <strong>{currentUser?.rol_nombre}</strong>. Usa el menú lateral para navegar por las opciones.
+                Has iniciado sesion con el rol de <strong>{currentUser?.rol_nombre}</strong>. Usa el menu lateral para navegar por las opciones.
               </p>
               <div className="row g-4 mt-2">
                 <div className="col-md-3">
                   <div className="card text-white bg-primary p-3 border-0 shadow-sm" style={{ cursor: 'pointer' }} onClick={() => setActiveTab('clients')}>
-                    <h5>👥 Clientes</h5>
+                    <h5>Clientes</h5>
                     <p className="small mb-0 opacity-80">Registra y administra clientes en la base de datos.</p>
                   </div>
                 </div>
                 <div className="col-md-3">
                   <div className="card text-white bg-success p-3 border-0 shadow-sm" style={{ cursor: 'pointer' }} onClick={() => setActiveTab('products')}>
-                    <h5>📦 Productos y Serv.</h5>
-                    <p className="small mb-0 opacity-80">Administra inventarios, precios y cálculo automático de IVA.</p>
+                    <h5>Productos y servicios</h5>
+                    <p className="small mb-0 opacity-80">Administra inventarios, precios y calculo automatico de IVA.</p>
                   </div>
                 </div>
                 <div className="col-md-3">
                   <div className="card text-white bg-warning p-3 border-0 shadow-sm" style={{ cursor: 'pointer' }} onClick={() => setActiveTab('cash')}>
-                    <h5>💵 Caja Chica</h5>
+                    <h5>Caja chica</h5>
                     <p className="small mb-0 opacity-80">Abre y cierra turnos de caja para registrar arqueos diarios.</p>
                   </div>
                 </div>
                 <div className="col-md-3">
                   <div className="card text-white bg-info p-3 border-0 shadow-sm" style={{ cursor: 'pointer' }} onClick={() => setActiveTab('company')}>
-                    <h5>⚙️ Empresa (SRI)</h5>
-                    <p className="small mb-0 opacity-80">Configura el RUC y parámetros de facturación electrónica.</p>
+                    <h5>Empresa (SRI)</h5>
+                    <p className="small mb-0 opacity-80">Configura el RUC y parametros de facturacion electronica.</p>
                   </div>
                 </div>
               </div>
@@ -139,14 +172,23 @@ function App() {
     }
   };
 
-  // Si no está autenticado, renderizar la pantalla de Login
+  if (sessionLoading) {
+    return (
+      <div className="min-vh-100 d-flex align-items-center justify-content-center bg-body-tertiary">
+        <div className="text-center">
+          <h2 className="h5 mb-2">Validando sesion</h2>
+          <p className="text-secondary mb-0">Esperando respuesta del servidor...</p>
+        </div>
+      </div>
+    );
+  }
+
   if (!currentUser) {
     return <Login onLoginSuccess={(user) => setCurrentUser(user)} />;
   }
 
   return (
     <div className="d-flex min-vh-100 bg-body-tertiary">
-      {/* MENÚ LATERAL (SIDEBAR DE COREUI) */}
       <CSidebar
         colorScheme="dark"
         className="border-end"
@@ -163,10 +205,9 @@ function App() {
         </CSidebarHeader>
 
         <CSidebarNav>
-          {/* Dashboard */}
           <CNavItem>
-            <CNavLink 
-              active={activeTab === 'dashboard'} 
+            <CNavLink
+              active={activeTab === 'dashboard'}
               onClick={() => setSidebarVisible(window.innerWidth < 768 ? false : sidebarVisible) || setActiveTab('dashboard')}
               style={{ cursor: 'pointer' }}
             >
@@ -174,14 +215,13 @@ function App() {
             </CNavLink>
           </CNavItem>
 
-          {/* FASE 1: NÚCLEO DEL SISTEMA */}
           <div className="nav-title" style={{ padding: '0.75rem 1rem 0.25rem', fontSize: '0.7rem', fontWeight: 'bold', color: '#8a93a2', textTransform: 'uppercase' }}>
-            Núcleo
+            Nucleo
           </div>
-          
+
           <CNavItem>
-            <CNavLink 
-              active={activeTab === 'users'} 
+            <CNavLink
+              active={activeTab === 'users'}
               onClick={() => setSidebarVisible(window.innerWidth < 768 ? false : sidebarVisible) || setActiveTab('users')}
               style={{ cursor: 'pointer' }}
             >
@@ -190,8 +230,8 @@ function App() {
           </CNavItem>
 
           <CNavItem>
-            <CNavLink 
-              active={activeTab === 'company'} 
+            <CNavLink
+              active={activeTab === 'company'}
               onClick={() => setSidebarVisible(window.innerWidth < 768 ? false : sidebarVisible) || setActiveTab('company')}
               style={{ cursor: 'pointer' }}
             >
@@ -200,8 +240,8 @@ function App() {
           </CNavItem>
 
           <CNavItem>
-            <CNavLink 
-              active={activeTab === 'branches'} 
+            <CNavLink
+              active={activeTab === 'branches'}
               onClick={() => setSidebarVisible(window.innerWidth < 768 ? false : sidebarVisible) || setActiveTab('branches')}
               style={{ cursor: 'pointer' }}
             >
@@ -209,14 +249,13 @@ function App() {
             </CNavLink>
           </CNavItem>
 
-          {/* FASE 2: DATOS COMERCIALES */}
           <div className="nav-title" style={{ padding: '0.75rem 1rem 0.25rem', fontSize: '0.7rem', fontWeight: 'bold', color: '#8a93a2', textTransform: 'uppercase' }}>
             Comercial
           </div>
 
           <CNavItem>
-            <CNavLink 
-              active={activeTab === 'clients'} 
+            <CNavLink
+              active={activeTab === 'clients'}
               onClick={() => setSidebarVisible(window.innerWidth < 768 ? false : sidebarVisible) || setActiveTab('clients')}
               style={{ cursor: 'pointer' }}
             >
@@ -225,8 +264,8 @@ function App() {
           </CNavItem>
 
           <CNavItem>
-            <CNavLink 
-              active={activeTab === 'suppliers'} 
+            <CNavLink
+              active={activeTab === 'suppliers'}
               onClick={() => setSidebarVisible(window.innerWidth < 768 ? false : sidebarVisible) || setActiveTab('suppliers')}
               style={{ cursor: 'pointer' }}
             >
@@ -235,8 +274,8 @@ function App() {
           </CNavItem>
 
           <CNavItem>
-            <CNavLink 
-              active={activeTab === 'products'} 
+            <CNavLink
+              active={activeTab === 'products'}
               onClick={() => setSidebarVisible(window.innerWidth < 768 ? false : sidebarVisible) || setActiveTab('products')}
               style={{ cursor: 'pointer' }}
             >
@@ -245,23 +284,22 @@ function App() {
           </CNavItem>
 
           <CNavItem>
-            <CNavLink 
-              active={activeTab === 'categories'} 
+            <CNavLink
+              active={activeTab === 'categories'}
               onClick={() => setSidebarVisible(window.innerWidth < 768 ? false : sidebarVisible) || setActiveTab('categories')}
               style={{ cursor: 'pointer' }}
             >
-              <CIcon icon={cilFolder} className="nav-icon" /> Categorías
+              <CIcon icon={cilFolder} className="nav-icon" /> Categorias
             </CNavLink>
           </CNavItem>
 
-          {/* FASE 3: OPERACIONES */}
           <div className="nav-title" style={{ padding: '0.75rem 1rem 0.25rem', fontSize: '0.7rem', fontWeight: 'bold', color: '#8a93a2', textTransform: 'uppercase' }}>
-            Operación
+            Operacion
           </div>
 
           <CNavItem>
-            <CNavLink 
-              active={activeTab === 'cash'} 
+            <CNavLink
+              active={activeTab === 'cash'}
               onClick={() => setSidebarVisible(window.innerWidth < 768 ? false : sidebarVisible) || setActiveTab('cash')}
               style={{ cursor: 'pointer' }}
             >
@@ -270,8 +308,8 @@ function App() {
           </CNavItem>
 
           <CNavItem>
-            <CNavLink 
-              active={activeTab === 'inventory'} 
+            <CNavLink
+              active={activeTab === 'inventory'}
               onClick={() => setSidebarVisible(window.innerWidth < 768 ? false : sidebarVisible) || setActiveTab('inventory')}
               style={{ cursor: 'pointer' }}
             >
@@ -279,64 +317,59 @@ function App() {
             </CNavLink>
           </CNavItem>
 
-          {/* FASE 4: FACTURACIÓN */}
           <div className="nav-title" style={{ padding: '0.75rem 1rem 0.25rem', fontSize: '0.7rem', fontWeight: 'bold', color: '#8a93a2', textTransform: 'uppercase' }}>
             Documentos
           </div>
 
           <CNavItem>
-            <CNavLink 
-              active={activeTab === 'invoices'} 
+            <CNavLink
+              active={activeTab === 'invoices'}
               onClick={() => setSidebarVisible(window.innerWidth < 768 ? false : sidebarVisible) || setActiveTab('invoices')}
               style={{ cursor: 'pointer' }}
             >
-              <CIcon icon={cilFile} className="nav-icon" /> Facturación (SRI)
+              <CIcon icon={cilFile} className="nav-icon" /> Facturacion (SRI)
             </CNavLink>
           </CNavItem>
         </CSidebarNav>
       </CSidebar>
 
-      {/* CONTENEDOR PRINCIPAL */}
       <div className="wrapper d-flex flex-column min-vh-100 flex-grow-1" style={{ minWidth: 0 }}>
-        {/* Cabecera superior (Header de CoreUI) */}
         <CHeader className="mb-4 border-bottom bg-white px-3" position="sticky">
           <CContainer fluid className="d-flex align-items-center justify-content-between">
-            <CHeaderToggler 
-              className="ps-1" 
+            <CHeaderToggler
+              className="ps-1"
               onClick={() => setSidebarVisible(!sidebarVisible)}
             >
               <CIcon icon={cilMenu} size="lg" />
             </CHeaderToggler>
-            
+
             <CHeaderNav className="d-none d-md-flex me-auto">
               <span className="text-secondary" style={{ marginLeft: '1rem', fontWeight: '500' }}>
                 Sistema Comercial Integrado
               </span>
             </CHeaderNav>
-            
+
             <CHeaderNav className="align-items-center gap-2">
               <span style={{ fontSize: '0.85rem', color: '#768192', fontWeight: '600' }}>
-                👤 {currentUser?.username} ({currentUser?.rol_nombre})
+                {currentUser?.username} ({currentUser?.rol_nombre})
               </span>
-              <button 
+              <button
                 className="btn btn-outline-danger btn-sm ms-2"
                 onClick={handleLogout}
                 style={{ fontSize: '0.75rem', padding: '0.2rem 0.5rem' }}
               >
-                Cerrar Sesión
+                Cerrar sesion
               </button>
             </CHeaderNav>
           </CContainer>
         </CHeader>
 
-        {/* Cuerpo del contenido (Body) */}
         <div className="body flex-grow-1 px-4">
           <CContainer fluid>
             {renderContent()}
           </CContainer>
         </div>
 
-        {/* Pie de página (Footer de CoreUI) */}
         <CFooter className="px-4 mt-4 border-top">
           <div>
             <span className="ms-1">&copy; 2026 FacturaPro Ecuador.</span>

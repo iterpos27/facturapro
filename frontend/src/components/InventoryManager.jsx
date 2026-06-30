@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import Swal from 'sweetalert2';
-import { apiUrl } from '../lib/api';
+import { apiFetch } from '../lib/api';
 
 export default function InventoryManager() {
   const [movements, setMovements] = useState([]);
@@ -35,7 +35,7 @@ export default function InventoryManager() {
   const fetchMovements = async () => {
     setLoading(true);
     try {
-      const response = await fetch(apiUrl('/api/inventory/movements'));
+      const response = await apiFetch('/api/inventory/movements');
       if (!response.ok) throw new Error('Error al conectar con la base de datos.');
       const data = await response.json();
       setMovements(data);
@@ -48,7 +48,7 @@ export default function InventoryManager() {
 
   const fetchProducts = async () => {
     try {
-      const response = await fetch(apiUrl('/api/products'));
+      const response = await apiFetch('/api/products');
       if (response.ok) {
         const data = await response.json();
         setProducts(data);
@@ -112,7 +112,7 @@ export default function InventoryManager() {
     };
 
     try {
-      const response = await fetch(apiUrl('/api/inventory/movements'), {
+      const response = await apiFetch('/api/inventory/movements', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

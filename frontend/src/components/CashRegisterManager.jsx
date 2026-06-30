@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import Swal from 'sweetalert2';
-import { apiUrl } from '../lib/api';
+import { apiFetch } from '../lib/api';
 
 export default function CashRegisterManager() {
   const [boxes, setBoxes] = useState([]);
@@ -32,7 +32,7 @@ export default function CashRegisterManager() {
   const checkSessionStatus = async (userId) => {
     setLoading(true);
     try {
-      const response = await fetch(apiUrl(`/api/cash-registers/status?id_usuario=${userId}`));
+      const response = await apiFetch(`/api/cash-registers/status?id_usuario=${userId}`);
       if (response.ok) {
         const data = await response.json();
         if (data.sessionActive) {
@@ -50,7 +50,7 @@ export default function CashRegisterManager() {
 
   const fetchBoxes = async () => {
     try {
-      const response = await fetch(apiUrl('/api/cash-registers/list'));
+      const response = await apiFetch('/api/cash-registers/list');
       if (response.ok) {
         const data = await response.json();
         setBoxes(data);
@@ -63,7 +63,7 @@ export default function CashRegisterManager() {
 
   const fetchPaymentMethods = async () => {
     try {
-      const response = await fetch(apiUrl('/api/cash-registers/payment-methods'));
+      const response = await apiFetch('/api/cash-registers/payment-methods');
       if (response.ok) {
         const data = await response.json();
         setPaymentMethods(data);
@@ -108,7 +108,7 @@ export default function CashRegisterManager() {
     }
 
     try {
-      const response = await fetch(apiUrl('/api/cash-registers/open'), {
+      const response = await apiFetch('/api/cash-registers/open', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -146,7 +146,7 @@ export default function CashRegisterManager() {
     }
 
     try {
-      const response = await fetch(apiUrl('/api/cash-registers/close'), {
+      const response = await apiFetch('/api/cash-registers/close', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

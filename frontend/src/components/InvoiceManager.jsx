@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import Swal from 'sweetalert2';
-import { apiUrl } from '../lib/api';
+import { apiFetch } from '../lib/api';
 
 export default function InvoiceManager() {
   const [invoices, setInvoices] = useState([]);
@@ -35,7 +35,7 @@ export default function InvoiceManager() {
   const fetchInvoices = async () => {
     setLoading(true);
     try {
-      const response = await fetch(apiUrl('/api/invoices'));
+      const response = await apiFetch('/api/invoices');
       if (!response.ok) throw new Error('Error al conectar con la base de datos.');
       const data = await response.json();
       setInvoices(data);
@@ -49,7 +49,7 @@ export default function InvoiceManager() {
   const fetchMetadata = async () => {
     try {
       // 1. Clientes
-      const cliRes = await fetch(apiUrl('/api/clients'));
+      const cliRes = await apiFetch('/api/clients');
       if (cliRes.ok) {
         const data = await cliRes.json();
         setClients(data);
@@ -57,14 +57,14 @@ export default function InvoiceManager() {
       }
 
       // 2. Productos
-      const prodRes = await fetch(apiUrl('/api/products'));
+      const prodRes = await apiFetch('/api/products');
       if (prodRes.ok) {
         const data = await prodRes.json();
         setProducts(data.filter(p => p.activo));
       }
 
       // 3. Métodos de pago
-      const pmRes = await fetch(apiUrl('/api/cash-registers/payment-methods'));
+      const pmRes = await apiFetch('/api/cash-registers/payment-methods');
       if (pmRes.ok) {
         const data = await pmRes.json();
         setPaymentMethods(data);
@@ -199,7 +199,7 @@ export default function InvoiceManager() {
     };
 
     try {
-      const response = await fetch(apiUrl('/api/invoices'), {
+      const response = await apiFetch('/api/invoices', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -238,7 +238,7 @@ export default function InvoiceManager() {
 
     if (result.isConfirmed) {
       try {
-        const response = await fetch(apiUrl(`/api/invoices/${id}/cancel`), {
+        const response = await apiFetch(`/api/invoices/${id}/cancel`, {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
@@ -260,7 +260,7 @@ export default function InvoiceManager() {
   // Cargar una factura en detalle para RIDE
   const handleOpenDetail = async (id) => {
     try {
-      const response = await fetch(apiUrl(`/api/invoices/${id}`));
+      const response = await apiFetch(`/api/invoices/${id}`);
       if (response.ok) {
         const data = await response.json();
         setViewInvoice(data);

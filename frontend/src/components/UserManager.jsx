@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import Swal from 'sweetalert2';
-import { apiUrl } from '../lib/api';
+import { apiFetch, apiUrl } from '../lib/api';
 
 export default function UserManager() {
   const [users, setUsers] = useState([]);
@@ -25,7 +25,7 @@ export default function UserManager() {
   const fetchUsers = async () => {
     setLoading(true);
     try {
-      const response = await fetch(apiUrl('/api/users'));
+      const response = await apiFetch('/api/users');
       if (!response.ok) throw new Error('Error al conectar con la base de datos.');
       const data = await response.json();
       setUsers(data);
@@ -38,7 +38,7 @@ export default function UserManager() {
 
   const fetchRoles = async () => {
     try {
-      const response = await fetch(apiUrl('/api/users/roles'));
+      const response = await apiFetch('/api/users/roles');
       if (response.ok) {
         const data = await response.json();
         setRoles(data);
@@ -115,7 +115,7 @@ export default function UserManager() {
 
     if (result.isConfirmed) {
       try {
-        const response = await fetch(apiUrl(`/api/users/${id}`), {
+        const response = await apiFetch(`/api/users/${id}`, {
           method: 'DELETE',
         });
         const resultData = await response.json();
@@ -153,7 +153,7 @@ export default function UserManager() {
     const method = editingUser ? 'PUT' : 'POST';
 
     try {
-      const response = await fetch(url, {
+      const response = await apiFetch(url.replace(/^https?:\/\/[^/]+/, ''), {
         method: method,
         headers: {
           'Content-Type': 'application/json',

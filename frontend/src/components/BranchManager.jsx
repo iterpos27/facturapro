@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import Swal from 'sweetalert2';
-import { apiUrl } from '../lib/api';
+import { apiFetch, apiUrl } from '../lib/api';
 
 export default function BranchManager() {
   const [branches, setBranches] = useState([]);
@@ -23,7 +23,7 @@ export default function BranchManager() {
   const fetchBranches = async () => {
     setLoading(true);
     try {
-      const response = await fetch(apiUrl('/api/branches'));
+      const response = await apiFetch('/api/branches');
       if (!response.ok) throw new Error('Error al conectar con la base de datos.');
       const data = await response.json();
       setBranches(data);
@@ -95,7 +95,7 @@ export default function BranchManager() {
 
     if (result.isConfirmed) {
       try {
-        const response = await fetch(apiUrl(`/api/branches/${id}`), {
+        const response = await apiFetch(`/api/branches/${id}`, {
           method: 'DELETE',
         });
         const resultData = await response.json();
@@ -143,7 +143,7 @@ export default function BranchManager() {
     const method = editingBranch ? 'PUT' : 'POST';
 
     try {
-      const response = await fetch(url, {
+      const response = await apiFetch(url.replace(/^https?:\/\/[^/]+/, ''), {
         method: method,
         headers: {
           'Content-Type': 'application/json',

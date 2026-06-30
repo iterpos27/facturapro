@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import Swal from 'sweetalert2';
-import { apiUrl } from '../lib/api';
+import { apiFetch } from '../lib/api';
 
 export default function CompanyManager() {
   const [loading, setLoading] = useState(false);
@@ -22,7 +22,7 @@ export default function CompanyManager() {
   const fetchCompanyData = async () => {
     setLoading(true);
     try {
-      const response = await fetch(apiUrl('/api/company'));
+      const response = await apiFetch('/api/company');
       if (!response.ok) throw new Error('Error al consultar datos de la empresa.');
       const data = await response.json();
       if (data) {
@@ -86,7 +86,7 @@ export default function CompanyManager() {
 
     setSaving(true);
     try {
-      const response = await fetch(apiUrl('/api/company'), {
+      const response = await apiFetch('/api/company', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

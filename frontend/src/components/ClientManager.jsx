@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import Swal from 'sweetalert2';
-import { apiUrl } from '../lib/api';
+import { apiFetch, apiUrl } from '../lib/api';
 
 export default function ClientManager() {
   // 1. ==========================================
@@ -57,7 +57,7 @@ export default function ClientManager() {
     setLoading(true);
     setConnectionError(null);
     try {
-      const response = await fetch(apiUrl('/api/clients'));
+      const response = await apiFetch('/api/clients');
       if (!response.ok) {
         throw new Error('No se pudo conectar con el servidor.');
       }
@@ -133,7 +133,7 @@ export default function ClientManager() {
 
     if (result.isConfirmed) {
       try {
-        const response = await fetch(apiUrl(`/api/clients/${id}`), {
+        const response = await apiFetch(`/api/clients/${id}`, {
           method: 'DELETE',
         });
         const resultData = await response.json();
@@ -202,7 +202,7 @@ export default function ClientManager() {
     const method = editingClient ? 'PUT' : 'POST';
 
     try {
-      const response = await fetch(url, {
+      const response = await apiFetch(url.replace(/^https?:\/\/[^/]+/, ''), {
         method: method,
         headers: {
           'Content-Type': 'application/json',

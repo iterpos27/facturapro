@@ -22,38 +22,29 @@ app.get('/health', (req, res) => {
 });
 
 // Registrar rutas
+const { router: authRoutes, authenticateToken } = require('./routes/auth');
 const clientRoutes = require('./routes/clients');
-app.use('/api/clients', clientRoutes);
-
 const productRoutes = require('./routes/products');
-app.use('/api/products', productRoutes);
-
 const categoryRoutes = require('./routes/categories');
-app.use('/api/categories', categoryRoutes);
-
-const authRoutes = require('./routes/auth').router;
-app.use('/api/auth', authRoutes);
-
 const userRoutes = require('./routes/users');
-app.use('/api/users', userRoutes);
-
 const companyRoutes = require('./routes/company');
-app.use('/api/company', companyRoutes);
-
 const branchRoutes = require('./routes/branches');
-app.use('/api/branches', branchRoutes);
-
 const supplierRoutes = require('./routes/suppliers');
-app.use('/api/suppliers', supplierRoutes);
-
 const inventoryRoutes = require('./routes/inventory');
-app.use('/api/inventory', inventoryRoutes);
-
 const cashRegisterRoutes = require('./routes/cash_registers');
-app.use('/api/cash-registers', cashRegisterRoutes);
-
 const invoiceRoutes = require('./routes/invoices');
-app.use('/api/invoices', invoiceRoutes);
+
+app.use('/api/auth', authRoutes);
+app.use('/api/clients', authenticateToken, clientRoutes);
+app.use('/api/products', authenticateToken, productRoutes);
+app.use('/api/categories', authenticateToken, categoryRoutes);
+app.use('/api/users', authenticateToken, userRoutes);
+app.use('/api/company', authenticateToken, companyRoutes);
+app.use('/api/branches', authenticateToken, branchRoutes);
+app.use('/api/suppliers', authenticateToken, supplierRoutes);
+app.use('/api/inventory', authenticateToken, inventoryRoutes);
+app.use('/api/cash-registers', authenticateToken, cashRegisterRoutes);
+app.use('/api/invoices', authenticateToken, invoiceRoutes);
 
 
 // Manejo de errores global

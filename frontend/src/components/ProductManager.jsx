@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import Swal from 'sweetalert2';
-import { apiUrl } from '../lib/api';
+import { apiFetch, apiUrl } from '../lib/api';
 
 export default function ProductManager() {
   // 1. ==========================================
@@ -46,7 +46,7 @@ export default function ProductManager() {
   const fetchProducts = async () => {
     setLoading(true);
     try {
-      const response = await fetch(apiUrl('/api/products'));
+      const response = await apiFetch('/api/products');
       if (!response.ok) throw new Error('Error al conectar con la base de datos.');
       const data = await response.json();
       setProducts(data);
@@ -60,14 +60,14 @@ export default function ProductManager() {
   // Cargar categorías e impuestos para los dropdowns
   const fetchMetadata = async () => {
     try {
-      const catRes = await fetch(apiUrl('/api/products/categories'));
+      const catRes = await apiFetch('/api/products/categories');
       if (catRes.ok) {
         const catData = await catRes.json();
         setCategories(catData);
         if (catData.length > 0) setIdCategoria(catData[0].id_categoria);
       }
 
-      const taxRes = await fetch(apiUrl('/api/products/taxes'));
+      const taxRes = await apiFetch('/api/products/taxes');
       if (taxRes.ok) {
         const taxData = await taxRes.json();
         setTaxes(taxData);
@@ -220,7 +220,7 @@ export default function ProductManager() {
 
     if (result.isConfirmed) {
       try {
-        const response = await fetch(apiUrl(`/api/products/${id}`), {
+        const response = await apiFetch(`/api/products/${id}`, {
           method: 'DELETE',
         });
         const resultData = await response.json();
@@ -284,7 +284,7 @@ export default function ProductManager() {
     const method = editingProduct ? 'PUT' : 'POST';
 
     try {
-      const response = await fetch(url, {
+      const response = await apiFetch(url.replace(/^https?:\/\/[^/]+/, ''), {
         method: method,
         headers: {
           'Content-Type': 'application/json',

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import Swal from 'sweetalert2';
-import { apiUrl } from '../lib/api';
+import { apiFetch, apiUrl } from '../lib/api';
 
 export default function SupplierManager() {
   const [suppliers, setSuppliers] = useState([]);
@@ -25,7 +25,7 @@ export default function SupplierManager() {
   const fetchSuppliers = async () => {
     setLoading(true);
     try {
-      const response = await fetch(apiUrl('/api/suppliers'));
+      const response = await apiFetch('/api/suppliers');
       if (!response.ok) throw new Error('Error al conectar con la base de datos.');
       const data = await response.json();
       setSuppliers(data);
@@ -101,7 +101,7 @@ export default function SupplierManager() {
 
     if (result.isConfirmed) {
       try {
-        const response = await fetch(apiUrl(`/api/suppliers/${id}`), {
+        const response = await apiFetch(`/api/suppliers/${id}`, {
           method: 'DELETE',
         });
         const resultData = await response.json();
@@ -155,7 +155,7 @@ export default function SupplierManager() {
     const method = editingSupplier ? 'PUT' : 'POST';
 
     try {
-      const response = await fetch(url, {
+      const response = await apiFetch(url.replace(/^https?:\/\/[^/]+/, ''), {
         method: method,
         headers: {
           'Content-Type': 'application/json',
