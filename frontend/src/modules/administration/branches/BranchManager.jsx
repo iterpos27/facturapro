@@ -4,6 +4,7 @@ import { apiFetch, apiUrl } from '../../../lib/api';
 
 export default function BranchManager() {
   const [branches, setBranches] = useState([]);
+  const [sequentials, setSequentials] = useState([]);
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [showForm, setShowForm] = useState(false);
@@ -19,6 +20,7 @@ export default function BranchManager() {
 
   useEffect(() => {
     fetchBranches();
+    fetchSequentials();
   }, []);
 
   useEffect(() => {
@@ -43,6 +45,17 @@ export default function BranchManager() {
       console.error(error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchSequentials = async () => {
+    try {
+      const response = await apiFetch('/api/sequentials');
+      if (!response.ok) throw new Error('No se pudo consultar secuenciales.');
+      const data = await response.json();
+      setSequentials(data);
+    } catch (error) {
+      console.error(error);
     }
   };
 
@@ -172,10 +185,36 @@ export default function BranchManager() {
       showAlert(editingBranch ? 'Sucursal actualizada correctamente.' : 'Sucursal registrada exitosamente.', 'success');
       handleCancel();
       fetchBranches();
+      fetchSequentials();
     } catch (err) {
       showAlert(err.message, 'error');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleSequentialChange = (id, field, value) => {
+    setSequentials((current) => current.map((seq) => (
+      seq.id_secuencial === id ? { ...seq, [field]: value } : seq
+    )));
+  };
+
+  const handleSaveSequential = async (seq) => {
+    try {
+      const response = await apiFetch(`/api/sequentials/${seq.id_secuencial}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          secuencial_actual: Number(seq.secuencial_actual),
+          activo: seq.activo,
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'No se pudo actualizar el secuencial.');
+      showAlert('Secuencial actualizado correctamente.', 'success');
+      fetchSequentials();
+    } catch (error) {
+      showAlert(error.message, 'error');
     }
   };
 
@@ -304,6 +343,66 @@ export default function BranchManager() {
                 </div>
               ))}
             </div>
+          </div>
+        )}
+      </div>
+
+      <div className="client-data-panel mt-3">
+        <div className="d-flex align-items-center justify-content-between mb-3">
+          <div>
+            <h2 className="h5 fw-bold mb-1">Secuenciales de facturacion</h2>
+            <p className="text-secondary mb-0" style={{ fontSize: '0.9rem' }}>Configura el siguiente numero que se usara al emitir facturas.</p>
+          </div>
+          <button type="button" className="btn btn-secondary" onClick={fetchSequentials}>Actualizar</button>
+        </div>
+
+        {sequentials.length === 0 ? (
+          <p className="module-empty-state">No hay secuenciales configurados. Al emitir la primera factura se creara el secuencial automaticamente.</p>
+        ) : (
+          <div className="table-responsive">
+            <table className="table table-striped table-hover align-middle border">
+              <thead className="table-light">
+                <tr>
+                  <th>Establecimiento</th>
+                  <th>Punto emision</th>
+                  <th>Comprobante</th>
+                  <th style={{ width: '180px' }}>Siguiente secuencial</th>
+                  <th>Estado</th>
+                  <th style={{ width: '120px' }}>Accion</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sequentials.map((seq) => (
+                  <tr key={seq.id_secuencial}>
+                    <td>{seq.codigo_establecimiento} - {seq.sucursal_nombre}</td>
+                    <td>{seq.punto_emision}</td>
+                    <td>{seq.tipo_comprobante}</td>
+                    <td>
+                      <input
+                        type="number"
+                        min="1"
+                        className="form-control text-end"
+                        value={seq.secuencial_actual}
+                        onChange={(event) => handleSequentialChange(seq.id_secuencial, 'secuencial_actual', event.target.value)}
+                      />
+                    </td>
+                    <td>
+                      <label className="d-flex align-items-center gap-2 mb-0">
+                        <input
+                          type="checkbox"
+                          checked={seq.activo}
+                          onChange={(event) => handleSequentialChange(seq.id_secuencial, 'activo', event.target.checked)}
+                        />
+                        {seq.activo ? 'Activo' : 'Inactivo'}
+                      </label>
+                    </td>
+                    <td>
+                      <button type="button" className="btn btn-primary btn-sm" onClick={() => handleSaveSequential(seq)}>Guardar</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
       </div>

@@ -9,6 +9,7 @@ const createEmptyItem = () => ({
   cantidad: 1,
   precio_unitario: 0,
   descuento: 0,
+  descuento_porcentaje: 0,
   iva_porcentaje: 0,
 });
 
@@ -17,6 +18,22 @@ const getClientIdentification = (client) => client?.identification_number || cli
 const getClientPhone = (client) => client?.phone || client?.telefono || '';
 const getClientEmail = (client) => client?.email || '';
 const getClientAddress = (client) => client?.address || client?.direccion || '';
+
+const calculateLineAmounts = (item) => {
+  const quantity = parseFloat(item.cantidad) || 0;
+  const price = parseFloat(item.precio_unitario) || 0;
+  const discountAmount = parseFloat(item.descuento) || 0;
+  const discountPercent = parseFloat(item.descuento_porcentaje) || 0;
+  const taxPercent = parseFloat(item.iva_porcentaje) || 0;
+  const subtotal = quantity * price;
+  const iva = subtotal * (taxPercent / 100);
+  const finalBeforeDiscount = subtotal + iva;
+  const percentValue = finalBeforeDiscount * (discountPercent / 100);
+  const totalDiscount = Math.min(finalBeforeDiscount, discountAmount + percentValue);
+  const total = Math.max(finalBeforeDiscount - totalDiscount, 0);
+
+  return { quantity, price, discountAmount, discountPercent, taxPercent, subtotal, iva, totalDiscount, total };
+};
 
 export default function InvoiceManager({ onRedirectToCash }) {
   const [invoices, setInvoices] = useState([]);
@@ -33,6 +50,8 @@ export default function InvoiceManager({ onRedirectToCash }) {
   const [proformaNumber, setProformaNumber] = useState('');
   const [sourceProforma, setSourceProforma] = useState(null);
   const [notes, setNotes] = useState('');
+  const [montoPago, setMontoPago] = useState('');
+  const [anticipo, setAnticipo] = useState('');
   const [currentUser, setCurrentUser] = useState(null);
 
   useEffect(() => {
@@ -114,23 +133,19 @@ export default function InvoiceManager({ onRedirectToCash }) {
 
     invoiceItems.forEach((item) => {
       if (!item.id_producto) return;
-      const cant = parseFloat(item.cantidad) || 0;
-      const precio = parseFloat(item.precio_unitario) || 0;
-      const desc = parseFloat(item.descuento) || 0;
-      const subtotal = cant * precio;
-      const base = Math.max(subtotal - desc, 0);
-      const taxPercent = parseFloat(item.iva_porcentaje) || 0;
-      const iva = base * (taxPercent / 100);
+      const { subtotal, taxPercent, iva, totalDiscount } = calculateLineAmounts(item);
 
-      subtotalSinImpuestos += base;
-      descuentoTotal += Math.min(subtotal, desc);
+      subtotalSinImpuestos += subtotal;
+      descuentoTotal += totalDiscount;
       valorIvaTotal += iva;
       if (taxPercent > 0) {
-        subtotalConIva += base;
+        subtotalConIva += subtotal;
       } else {
-        subtotalIvaCero += base;
+        subtotalIvaCero += subtotal;
       }
     });
+
+    const total = Math.max(subtotalSinImpuestos + valorIvaTotal - descuentoTotal, 0);
 
     return {
       subtotalSinImpuestos,
@@ -138,11 +153,14 @@ export default function InvoiceManager({ onRedirectToCash }) {
       subtotalIvaCero,
       descuentoTotal,
       valorIvaTotal,
-      total: subtotalSinImpuestos + valorIvaTotal,
+      total,
     };
   };
 
   const totals = calculateTotals();
+  const paidAmount = (parseFloat(montoPago) || 0) + (parseFloat(anticipo) || 0);
+  const changeAmount = Math.max(paidAmount - totals.total, 0);
+  const balanceAmount = Math.max(totals.total - paidAmount, 0);
 
   const handleCancel = () => {
     if (clients.length > 0) setSelectedClient(String(clients[0].id));
@@ -152,6 +170,8 @@ export default function InvoiceManager({ onRedirectToCash }) {
     setProformaNumber('');
     setSourceProforma(null);
     setNotes('');
+    setMontoPago('');
+    setAnticipo('');
     setShowForm(false);
   };
 
@@ -164,6 +184,7 @@ export default function InvoiceManager({ onRedirectToCash }) {
       cantidad: item.cantidad || 1,
       precio_unitario: parseFloat(selectedProd.precio_venta) || 0,
       descuento: item.descuento || 0,
+      descuento_porcentaje: item.descuento_porcentaje || 0,
       iva_porcentaje: parseFloat(selectedProd.impuesto_porcentaje) || 0,
     };
   };
@@ -231,8 +252,11 @@ export default function InvoiceManager({ onRedirectToCash }) {
         cantidad: item.quantity,
         precio_unitario: item.price,
         descuento: item.discountAmount || item.discount || 0,
+        descuento_porcentaje: item.discountPercent || 0,
         iva_porcentaje: item.taxPercent || 0,
       })));
+      setMontoPago('');
+      setAnticipo('');
       showAlert(`Proforma ${data.number} cargada.`, 'success');
     } catch (error) {
       showAlert(error.message || 'No se pudo cargar la proforma.', 'error');
@@ -244,6 +268,8 @@ export default function InvoiceManager({ onRedirectToCash }) {
     setProformaNumber('');
     setInvoiceItems([createEmptyItem()]);
     setNotes('');
+    setMontoPago('');
+    setAnticipo('');
   };
 
   const handleSubmit = async (e) => {
@@ -271,7 +297,11 @@ export default function InvoiceManager({ onRedirectToCash }) {
         cantidad: parseFloat(item.cantidad),
         precio_unitario: parseFloat(item.precio_unitario),
         descuento: parseFloat(item.descuento) || 0,
+        descuento_porcentaje: parseFloat(item.descuento_porcentaje) || 0,
       })),
+      monto_pago: parseFloat(montoPago) || 0,
+      anticipo: parseFloat(anticipo) || 0,
+      observacion: notes,
     };
 
     try {
@@ -550,7 +580,8 @@ export default function InvoiceManager({ onRedirectToCash }) {
                       <th style={{ width: '100px' }}>Cantidad</th>
                       <th style={{ width: '120px' }}>Precio</th>
                       <th style={{ width: '120px' }}>PVP Final</th>
-                      <th style={{ width: '110px' }}>Descuento</th>
+                      <th style={{ width: '110px' }}>Desc. $</th>
+                      <th style={{ width: '110px' }}>Desc. %</th>
                       <th style={{ width: '80px' }}>IVA</th>
                       <th style={{ width: '110px' }}>Total</th>
                       <th style={{ width: '50px' }}></th>
@@ -558,17 +589,12 @@ export default function InvoiceManager({ onRedirectToCash }) {
                   </thead>
                   <tbody>
                     {invoiceItems.filter((item) => item.id_producto).length === 0 ? (
-                      <tr><td colSpan="9" className="text-center text-muted">Busca un producto o carga una proforma.</td></tr>
+                      <tr><td colSpan="10" className="text-center text-muted">Busca un producto o carga una proforma.</td></tr>
                     ) : (
                       invoiceItems.map((item, index) => {
                         if (!item.id_producto) return null;
                         const product = products.find((p) => String(p.id_producto) === String(item.id_producto));
-                        const cant = parseFloat(item.cantidad) || 0;
-                        const price = parseFloat(item.precio_unitario) || 0;
-                        const desc = parseFloat(item.descuento) || 0;
-                        const base = Math.max(cant * price - desc, 0);
-                        const iva = base * ((parseFloat(item.iva_porcentaje) || 0) / 100);
-                        const totalLine = base + iva;
+                        const { price, taxPercent, total: totalLine } = calculateLineAmounts(item);
                         return (
                           <tr key={`${item.id_producto}-${index}`}>
                             <td className="text-center fw-bold">{product?.codigo || product?.sku || item.id_producto}</td>
@@ -583,9 +609,12 @@ export default function InvoiceManager({ onRedirectToCash }) {
                             <td>
                               <input type="number" step="0.0001" min="0" className="form-control form-control-sm text-end" value={item.precio_unitario} onChange={(e) => handleItemChange(index, 'precio_unitario', e.target.value)} required />
                             </td>
-                            <td className="text-end fw-bold">${(price * (1 + ((parseFloat(item.iva_porcentaje) || 0) / 100))).toFixed(4)}</td>
+                            <td className="text-end fw-bold">${(price * (1 + (taxPercent / 100))).toFixed(4)}</td>
                             <td>
                               <input type="number" step="0.01" min="0" className="form-control form-control-sm text-end" value={item.descuento} onChange={(e) => handleItemChange(index, 'descuento', e.target.value)} />
+                            </td>
+                            <td>
+                              <input type="number" step="0.01" min="0" max="100" className="form-control form-control-sm text-end" value={item.descuento_porcentaje} onChange={(e) => handleItemChange(index, 'descuento_porcentaje', e.target.value)} />
                             </td>
                             <td className="text-center"><span className="badge bg-secondary">{item.iva_porcentaje}%</span></td>
                             <td className="text-end fw-bold">${totalLine.toFixed(2)}</td>
@@ -616,6 +645,18 @@ export default function InvoiceManager({ onRedirectToCash }) {
                     <div className="d-flex justify-content-between mb-2"><span className="text-secondary">Subtotal IVA 0%:</span><span>${totals.subtotalIvaCero.toFixed(2)}</span></div>
                     <div className="d-flex justify-content-between mb-2"><span className="text-secondary">Subtotal Neto:</span><span>${totals.subtotalConIva.toFixed(4)}</span></div>
                     <div className="d-flex justify-content-between mb-2"><span className="text-secondary">IVA:</span><span>${totals.valorIvaTotal.toFixed(4)}</span></div>
+                    <div className="row g-2 mt-2">
+                      <div className="col-6">
+                        <label className="form-label fw-bold mb-1">Anticipo</label>
+                        <input type="number" step="0.01" min="0" className="form-control text-end" value={anticipo} onChange={(event) => setAnticipo(event.target.value)} placeholder="0.00" />
+                      </div>
+                      <div className="col-6">
+                        <label className="form-label fw-bold mb-1">Pago</label>
+                        <input type="number" step="0.01" min="0" className="form-control text-end" value={montoPago} onChange={(event) => setMontoPago(event.target.value)} placeholder="0.00" />
+                      </div>
+                    </div>
+                    <div className="d-flex justify-content-between mt-3 mb-2"><span className="text-secondary">Cambio:</span><span className="text-success fw-bold">${changeAmount.toFixed(2)}</span></div>
+                    <div className="d-flex justify-content-between mb-2"><span className="text-secondary">Saldo:</span><span className="text-danger fw-bold">${balanceAmount.toFixed(2)}</span></div>
                     <hr />
                     <div className="d-flex justify-content-between align-items-center mb-0">
                       <strong className="text-dark">TOTAL:</strong>
@@ -675,7 +716,8 @@ export default function InvoiceManager({ onRedirectToCash }) {
                   <th>Cant.</th>
                   <th>Descripcion</th>
                   <th className="text-end">P. Unit</th>
-                  <th className="text-end">Desc.</th>
+                  <th className="text-end">Desc. $</th>
+                  <th className="text-end">Desc. %</th>
                   <th className="text-end">Total</th>
                 </tr>
               </thead>
@@ -686,8 +728,9 @@ export default function InvoiceManager({ onRedirectToCash }) {
                     <td>{parseFloat(d.cantidad).toFixed(2)}</td>
                     <td>{d.producto_nombre}</td>
                     <td className="text-end">${parseFloat(d.precio_unitario).toFixed(2)}</td>
-                    <td className="text-end">${parseFloat(d.descuento).toFixed(2)}</td>
-                    <td className="text-end">${parseFloat(d.precio_total).toFixed(2)}</td>
+                    <td className="text-end">${parseFloat(d.descuento_total || d.descuento || 0).toFixed(2)}</td>
+                    <td className="text-end">{parseFloat(d.descuento_porcentaje || 0).toFixed(2)}%</td>
+                    <td className="text-end">${Math.max(parseFloat(d.precio_total || 0) + parseFloat(d.valor_iva || 0) - parseFloat(d.descuento_total || d.descuento || 0), 0).toFixed(2)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -697,10 +740,15 @@ export default function InvoiceManager({ onRedirectToCash }) {
               <div className="col-7">
                 <div><strong>FORMA DE PAGO:</strong></div>
                 <div>{viewInvoice.invoice.metodo_pago_nombre || 'Efectivo'}</div>
+                <div><strong>ANTICIPO:</strong> ${parseFloat(viewInvoice.invoice.anticipo || 0).toFixed(2)}</div>
+                <div><strong>PAGO:</strong> ${parseFloat(viewInvoice.invoice.monto_pago || 0).toFixed(2)}</div>
+                <div><strong>CAMBIO:</strong> ${parseFloat(viewInvoice.invoice.cambio || 0).toFixed(2)}</div>
+                <div><strong>SALDO:</strong> ${parseFloat(viewInvoice.invoice.saldo || 0).toFixed(2)}</div>
               </div>
               <div className="col-5">
                 <div className="d-flex justify-content-between"><span>Subtotal IVA 0%:</span><span>${parseFloat(viewInvoice.invoice.subtotal_iva_cero).toFixed(2)}</span></div>
                 <div className="d-flex justify-content-between"><span>Subtotal con IVA:</span><span>${parseFloat(viewInvoice.invoice.subtotal_con_iva).toFixed(2)}</span></div>
+                <div className="d-flex justify-content-between"><span>Descuento:</span><span>${parseFloat(viewInvoice.invoice.descuento_total || 0).toFixed(2)}</span></div>
                 <div className="d-flex justify-content-between"><span>IVA Total:</span><span>${parseFloat(viewInvoice.invoice.valor_iva).toFixed(2)}</span></div>
                 <div className="d-flex justify-content-between fw-bold" style={{ fontSize: '1rem', borderTop: '1px double #000', paddingTop: '2px' }}>
                   <span>TOTAL NETO:</span><span>${parseFloat(viewInvoice.invoice.total).toFixed(2)}</span>

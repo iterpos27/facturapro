@@ -2,16 +2,12 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 const { authenticateToken } = require('./auth');
+const { writeAudit } = require('../audit');
 
-// Proteger todas las rutas de facturación con autenticación
 router.use(authenticateToken);
 
-// Helper para rellenar ceros del secuencial (e.g. 1 -> 000000001)
-const formatSequential = (num) => {
-  return String(num).padStart(9, '0');
-};
+const formatSequential = (num) => String(num).padStart(9, '0');
 
-// 1. Obtener lista de facturas emitidas (GET /api/invoices)
 router.get('/', async (req, res) => {
   try {
     const result = await db.query(`
@@ -28,11 +24,8 @@ router.get('/', async (req, res) => {
   }
 });
 
-// 2. Obtener detalle de una factura por ID (GET /api/invoices/:id)
 router.get('/:id', async (req, res) => {
-  const { id } = req.params;
   try {
-    // 1. Cabecera de la factura
     const invoiceRes = await db.query(`
       SELECT f.*, c.name as cliente_nombre, c.identification_number as cliente_identificacion,
              c.email as cliente_email, c.phone as cliente_telefono, c.address as cliente_direccion,
@@ -43,24 +36,23 @@ router.get('/:id', async (req, res) => {
       JOIN sucursales s ON f.id_sucursal = s.id_sucursal
       LEFT JOIN metodos_pago mp ON f.id_metodo_pago = mp.id_metodo
       WHERE f.id_factura = $1
-    `, [id]);
+    `, [req.params.id]);
 
     if (invoiceRes.rows.length === 0) {
       return res.status(404).json({ error: 'Factura no encontrada.' });
     }
 
-    // 2. Detalles de la factura
     const detailsRes = await db.query(`
       SELECT fd.*, p.nombre as producto_nombre, p.codigo as producto_codigo
       FROM factura_detalles fd
       JOIN productos p ON fd.id_producto = p.id_producto
       WHERE fd.id_factura = $1
       ORDER BY fd.id_detalle ASC
-    `, [id]);
+    `, [req.params.id]);
 
     res.json({
       invoice: invoiceRes.rows[0],
-      details: detailsRes.rows
+      details: detailsRes.rows,
     });
   } catch (error) {
     console.error('Error al obtener detalle de factura:', error);
@@ -68,11 +60,10 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-// 3. Registrar una nueva factura (POST /api/invoices)
 router.post('/', async (req, res) => {
-  const { id_cliente, id_usuario, id_metodo_pago, id_proforma, items } = req.body;
+  const { id_cliente, id_usuario, id_metodo_pago, id_proforma, items, monto_pago, anticipo, observacion } = req.body;
 
-  if (!id_cliente || !id_usuario || !id_metodo_pago || !items || items.length === 0) {
+  if (!id_cliente || !id_usuario || !id_metodo_pago || !Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ error: 'Faltan datos requeridos para emitir la factura.' });
   }
 
@@ -96,11 +87,10 @@ router.post('/', async (req, res) => {
       }
     }
 
-    // 1. Buscar la sucursal predeterminada activa
     const branchRes = await client.query(`
-      SELECT s.id_sucursal, s.codigo_establecimiento, s.punto_emision 
-      FROM sucursales s 
-      WHERE s.activo = true 
+      SELECT s.id_sucursal, s.codigo_establecimiento, s.punto_emision
+      FROM sucursales s
+      WHERE s.activo = true
       LIMIT 1
     `);
     if (branchRes.rows.length === 0) {
@@ -108,10 +98,9 @@ router.post('/', async (req, res) => {
     }
     const { id_sucursal, codigo_establecimiento, punto_emision } = branchRes.rows[0];
 
-    // 2. Verificar si el usuario tiene una sesión de caja chica ABIERTA
     const boxSessionRes = await client.query(`
-      SELECT id_sesion FROM sesiones_caja 
-      WHERE id_usuario = $1 AND estado = 'ABIERTA' 
+      SELECT id_sesion FROM sesiones_caja
+      WHERE id_usuario = $1 AND estado = 'ABIERTA'
       ORDER BY fecha_apertura DESC LIMIT 1
     `, [id_usuario]);
     if (boxSessionRes.rows.length === 0) {
@@ -119,10 +108,9 @@ router.post('/', async (req, res) => {
     }
     const id_sesion_caja = boxSessionRes.rows[0].id_sesion;
 
-    // 3. Generar y bloquear secuencial atómico de facturación
     const seqRes = await client.query(`
-      SELECT secuencial_actual FROM secuenciales 
-      WHERE id_sucursal = $1 AND tipo_comprobante = 'FACTURA' 
+      SELECT secuencial_actual FROM secuenciales
+      WHERE id_sucursal = $1 AND tipo_comprobante = 'FACTURA' AND activo = true
       FOR UPDATE
     `, [id_sucursal]);
 
@@ -130,8 +118,8 @@ router.post('/', async (req, res) => {
     if (seqRes.rows.length > 0) {
       seqActual = seqRes.rows[0].secuencial_actual;
       await client.query(`
-        UPDATE secuenciales 
-        SET secuencial_actual = secuencial_actual + 1 
+        UPDATE secuenciales
+        SET secuencial_actual = secuencial_actual + 1
         WHERE id_sucursal = $1 AND tipo_comprobante = 'FACTURA'
       `, [id_sucursal]);
     } else {
@@ -144,82 +132,85 @@ router.post('/', async (req, res) => {
     const secuencialStr = formatSequential(seqActual);
     const numeroFactura = `${codigo_establecimiento}-${punto_emision}-${secuencialStr}`;
 
-    // 4. Calcular importes totales
     let subtotalSinImpuestos = 0;
     let subtotalConIva = 0;
     let subtotalIvaCero = 0;
+    let descuentoTotal = 0;
     let valorIvaTotal = 0;
-
-    // Resolver detalles y validar existencias
     const detailLines = [];
-    for (const item of items) {
-      const { id_producto, cantidad, precio_unitario, descuento } = item;
-      const cantVal = parseFloat(cantidad) || 0;
-      const priceVal = parseFloat(precio_unitario) || 0;
-      const descVal = parseFloat(descuento) || 0;
 
-      if (cantVal <= 0 || priceVal < 0) {
-        throw new Error('La cantidad y precio unitario deben ser válidos.');
+    for (const item of items) {
+      const idProducto = item.id_producto;
+      const cantVal = parseFloat(item.cantidad) || 0;
+      const priceVal = parseFloat(item.precio_unitario) || 0;
+      const descVal = parseFloat(item.descuento) || 0;
+      const descPercentVal = parseFloat(item.descuento_porcentaje) || 0;
+
+      if (!idProducto || cantVal <= 0 || priceVal < 0 || descVal < 0 || descPercentVal < 0 || descPercentVal > 100) {
+        throw new Error('Cada detalle debe tener producto, cantidad, precio y descuento validos.');
       }
 
-      // Consultar tasa impositiva del producto
       const prodRes = await client.query(`
         SELECT p.nombre, p.stock_actual, p.id_impuesto, i.porcentaje, i.nombre as impuesto_nombre
         FROM productos p
         JOIN impuestos i ON p.id_impuesto = i.id_impuesto
         WHERE p.id_producto = $1
-      `, [id_producto]);
-
+      `, [idProducto]);
       if (prodRes.rows.length === 0) {
-        throw new Error(`Producto con ID ${id_producto} no encontrado.`);
+        throw new Error(`Producto con ID ${idProducto} no encontrado.`);
       }
 
       const product = prodRes.rows[0];
       const stockActual = parseFloat(product.stock_actual);
-
-      // Descontar inventario (sólo si no es servicio o si queremos validar stock)
       if (stockActual < cantVal) {
         throw new Error(`Stock insuficiente para "${product.nombre}". Disponible: ${stockActual}, Requerido: ${cantVal}`);
       }
 
-      // Cálculos por línea
-      const baseLine = (cantVal * priceVal) - descVal;
-      const taxPercent = parseFloat(product.porcentaje);
+      const baseLine = cantVal * priceVal;
+      const taxPercent = parseFloat(product.porcentaje) || 0;
       const lineIva = baseLine * (taxPercent / 100);
-      const lineTotal = baseLine;
+      const finalBeforeDiscount = baseLine + lineIva;
+      const percentDiscountValue = finalBeforeDiscount * (descPercentVal / 100);
+      const lineDiscountTotal = Math.min(finalBeforeDiscount, descVal + percentDiscountValue);
 
-      subtotalSinImpuestos += lineTotal;
+      subtotalSinImpuestos += baseLine;
+      descuentoTotal += lineDiscountTotal;
+      valorIvaTotal += lineIva;
       if (taxPercent > 0) {
-        subtotalConIva += lineTotal;
-        valorIvaTotal += lineIva;
+        subtotalConIva += baseLine;
       } else {
-        subtotalIvaCero += lineTotal;
+        subtotalIvaCero += baseLine;
       }
 
       detailLines.push({
-        id_producto,
+        id_producto: idProducto,
         cantidad: cantVal,
         precio_unitario: priceVal,
         descuento: descVal,
+        descuento_porcentaje: descPercentVal,
+        descuento_total: lineDiscountTotal,
         id_impuesto: product.id_impuesto,
         porcentaje_iva: taxPercent,
         valor_iva: lineIva,
-        precio_total: lineTotal,
-        nombre_producto: product.nombre
+        precio_total: baseLine,
       });
     }
 
-    const totalFactura = subtotalSinImpuestos + valorIvaTotal;
+    const totalFactura = Math.max(subtotalSinImpuestos + valorIvaTotal - descuentoTotal, 0);
+    const anticipoVal = Math.max(parseFloat(anticipo) || 0, 0);
+    const pagoVal = Math.max(parseFloat(monto_pago) || 0, 0);
+    const totalPagado = anticipoVal + pagoVal;
+    const cambio = Math.max(totalPagado - totalFactura, 0);
+    const saldo = Math.max(totalFactura - totalPagado, 0);
 
-    // 5. Insertar cabecera de Factura
-    const insFacturaQuery = `
+    const invoiceInserted = await client.query(`
       INSERT INTO facturas (
         id_sucursal, secuencial, numero_factura, id_cliente, id_usuario, id_sesion_caja,
-        subtotal_sin_impuestos, subtotal_con_iva, subtotal_iva_cero, valor_iva, total, id_metodo_pago, id_proforma
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+        subtotal_sin_impuestos, subtotal_con_iva, subtotal_iva_cero, descuento_total,
+        valor_iva, total, id_metodo_pago, id_proforma, monto_pago, anticipo, cambio, saldo, observacion
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
       RETURNING *
-    `;
-    const invoiceInserted = await client.query(insFacturaQuery, [
+    `, [
       id_sucursal,
       secuencialStr,
       numeroFactura,
@@ -229,43 +220,47 @@ router.post('/', async (req, res) => {
       subtotalSinImpuestos,
       subtotalConIva,
       subtotalIvaCero,
+      descuentoTotal,
       valorIvaTotal,
       totalFactura,
       id_metodo_pago,
-      id_proforma || null
+      id_proforma || null,
+      pagoVal,
+      anticipoVal,
+      cambio,
+      saldo,
+      observacion || '',
     ]);
     const id_factura = invoiceInserted.rows[0].id_factura;
 
-    // 6. Insertar detalles de factura, registrar egresos y actualizar stock
-    const insDetailQuery = `
-      INSERT INTO factura_detalles (
-        id_factura, id_producto, cantidad, precio_unitario, descuento, id_impuesto, porcentaje_iva, valor_iva, precio_total
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-    `;
-
     for (const line of detailLines) {
-      await client.query(insDetailQuery, [
+      await client.query(`
+        INSERT INTO factura_detalles (
+          id_factura, id_producto, cantidad, precio_unitario, descuento,
+          descuento_porcentaje, descuento_total, id_impuesto, porcentaje_iva, valor_iva, precio_total
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+      `, [
         id_factura,
         line.id_producto,
         line.cantidad,
         line.precio_unitario,
         line.descuento,
+        line.descuento_porcentaje,
+        line.descuento_total,
         line.id_impuesto,
         line.porcentaje_iva,
         line.valor_iva,
-        line.precio_total
+        line.precio_total,
       ]);
 
-      // Registrar movimiento de inventario (Kárdex)
       await client.query(`
         INSERT INTO movimientos_inventario (id_producto, tipo, cantidad, motivo, referencia, id_usuario)
         VALUES ($1, 'EGRESO', $2, 'VENTA', $3, $4)
       `, [line.id_producto, line.cantidad, numeroFactura, id_usuario]);
 
-      // Actualizar existencias en tabla productos
       await client.query(`
-        UPDATE productos 
-        SET stock_actual = stock_actual - $1 
+        UPDATE productos
+        SET stock_actual = stock_actual - $1
         WHERE id_producto = $2
       `, [line.cantidad, line.id_producto]);
     }
@@ -277,9 +272,16 @@ router.post('/', async (req, res) => {
       );
     }
 
+    await writeAudit(client, {
+      entity: 'facturas',
+      entityId: id_factura,
+      action: id_proforma ? 'FACTURAR_PROFORMA' : 'EMITIR_FACTURA',
+      userId: id_usuario,
+      detail: { numero_factura: numeroFactura, id_proforma: id_proforma || null, total: totalFactura, saldo },
+    });
+
     await client.query('COMMIT');
     res.status(201).json(invoiceInserted.rows[0]);
-
   } catch (error) {
     await client.query('ROLLBACK');
     console.error('Error al registrar factura:', error);
@@ -289,10 +291,9 @@ router.post('/', async (req, res) => {
   }
 });
 
-// 4. Anular factura (PUT /api/invoices/:id/cancel)
 router.put('/:id/cancel', async (req, res) => {
   const { id } = req.params;
-  const { id_usuario } = req.body; // Usuario que anula
+  const { id_usuario } = req.body;
 
   if (!id_usuario) {
     return res.status(400).json({ error: 'El ID de usuario es requerido para anular.' });
@@ -302,7 +303,6 @@ router.put('/:id/cancel', async (req, res) => {
   try {
     await client.query('BEGIN');
 
-    // 1. Obtener cabecera de la factura
     const factRes = await client.query('SELECT * FROM facturas WHERE id_factura = $1', [id]);
     if (factRes.rows.length === 0) {
       throw new Error('Factura no encontrada.');
@@ -313,39 +313,41 @@ router.put('/:id/cancel', async (req, res) => {
       throw new Error('La factura ya se encuentra anulada.');
     }
 
-    // 2. Obtener detalles para devolver el stock
     const detailsRes = await client.query('SELECT * FROM factura_detalles WHERE id_factura = $1', [id]);
-
-    // Devolver existencias y registrar movimientos en Kárdex
     for (const detail of detailsRes.rows) {
-      // Registrar reingreso de inventario
       await client.query(`
         INSERT INTO movimientos_inventario (id_producto, tipo, cantidad, motivo, referencia, id_usuario)
         VALUES ($1, 'INGRESO', $2, 'DEVOLUCION', $3, $4)
       `, [detail.id_producto, detail.cantidad, factura.numero_factura, id_usuario]);
 
-      // Sumar existencias
       await client.query(`
-        UPDATE productos 
-        SET stock_actual = stock_actual + $1 
+        UPDATE productos
+        SET stock_actual = stock_actual + $1
         WHERE id_producto = $2
       `, [detail.cantidad, detail.id_producto]);
     }
 
-    // 3. Cambiar estado a ANULADA
     const updRes = await client.query(`
-      UPDATE facturas 
-      SET estado = 'ANULADA' 
-      WHERE id_factura = $1 
+      UPDATE facturas
+      SET estado = 'ANULADA'
+      WHERE id_factura = $1
       RETURNING *
     `, [id]);
+
+    await writeAudit(client, {
+      entity: 'facturas',
+      entityId: id,
+      action: 'ANULAR_FACTURA',
+      userId: id_usuario,
+      detail: { numero_factura: factura.numero_factura },
+    });
 
     await client.query('COMMIT');
     res.json(updRes.rows[0]);
   } catch (error) {
     await client.query('ROLLBACK');
     console.error('Error al anular factura:', error);
-    res.status(400).json({ error: error.message || 'Error al procesar la anulación.' });
+    res.status(400).json({ error: error.message || 'Error al procesar la anulacion.' });
   } finally {
     client.release();
   }

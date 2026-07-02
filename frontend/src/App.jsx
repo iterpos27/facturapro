@@ -41,6 +41,7 @@ import CashRegisterManager from './modules/administration/cash/CashRegisterManag
 import CompanyManager from './modules/administration/company/CompanyManager';
 import BranchManager from './modules/administration/branches/BranchManager';
 import UserManager from './modules/administration/users/UserManager';
+import ReportsDashboard from './modules/reports/ReportsDashboard';
 import { apiFetch, AUTH_LOGOUT_EVENT, clearSession } from './lib/api';
 
 const DEFAULT_MENU_STATE = {
@@ -60,6 +61,7 @@ const TAB_SECTION_MAP = {
   inventory: 'inventario',
   proformas: 'documentos',
   invoices: 'documentos',
+  reports: 'documentos',
   cash: 'configuracion',
   company: 'configuracion',
   branches: 'configuracion',
@@ -225,9 +227,9 @@ function App() {
                   </div>
                 </div>
                 <div className="col-md-3">
-                  <div className="card dashboard-tile dashboard-tile-info" onClick={() => handleNavigate('company')}>
-                    <h5>Empresa</h5>
-                    <p>Configura el RUC y parametros de facturacion electronica.</p>
+                  <div className="card dashboard-tile dashboard-tile-info" onClick={() => handleNavigate('reports')}>
+                    <h5>Reportes</h5>
+                    <p>Consulta ventas, proformas y auditoria reciente.</p>
                   </div>
                 </div>
               </div>
@@ -256,6 +258,8 @@ function App() {
         return <ProformaManager />;
       case 'invoices':
         return <InvoiceManager onRedirectToCash={() => handleNavigate('cash')} />;
+      case 'reports':
+        return <ReportsDashboard />;
       default:
         return <ClientManager />;
     }
@@ -362,6 +366,11 @@ function App() {
               <CNavItem>
                 <CNavLink className="app-nav-link" active={activeTab === 'invoices'} onClick={() => handleNavigate('invoices')} style={{ cursor: 'pointer' }}>
                   <CIcon icon={cilFile} className="nav-icon" /> Facturación
+                </CNavLink>
+              </CNavItem>
+              <CNavItem>
+                <CNavLink className="app-nav-link" active={activeTab === 'reports'} onClick={() => handleNavigate('reports')} style={{ cursor: 'pointer' }}>
+                  <CIcon icon={cilSpeedometer} className="nav-icon" /> Reportes
                 </CNavLink>
               </CNavItem>
             </>,

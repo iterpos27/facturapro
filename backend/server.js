@@ -34,6 +34,8 @@ const inventoryRoutes = require('./routes/inventory');
 const cashRegisterRoutes = require('./routes/cash_registers');
 const invoiceRoutes = require('./routes/invoices');
 const proformaRoutes = require('./routes/proformas');
+const sequentialRoutes = require('./routes/sequentials');
+const reportRoutes = require('./routes/reports');
 
 app.use('/api/auth', authRoutes);
 app.use('/api/clients', authenticateToken, clientRoutes);
@@ -47,6 +49,8 @@ app.use('/api/inventory', authenticateToken, inventoryRoutes);
 app.use('/api/cash-registers', authenticateToken, cashRegisterRoutes);
 app.use('/api/invoices', authenticateToken, invoiceRoutes);
 app.use('/api/proformas', authenticateToken, proformaRoutes);
+app.use('/api/sequentials', authenticateToken, sequentialRoutes);
+app.use('/api/reports', authenticateToken, reportRoutes);
 
 
 // Manejo de errores global

@@ -2,6 +2,7 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const router = express.Router();
 const db = require('../db');
+const { writeAudit } = require('../audit');
 
 const formatTransactionNumber = (value) => String(Number(value) || 0).padStart(6, '0');
 const formatProformaNumber = (transactionNumber) => `PRO-${formatTransactionNumber(transactionNumber)}`;
@@ -52,7 +53,7 @@ const mapDetailRow = (row) => ({
 
 const verifyUserPassword = async (userId, password) => {
   if (!password) {
-    throw new Error('La clave del usuario es requerida para editar la proforma.');
+    throw new Error('La clave del usuario es requerida para esta accion.');
   }
 
   const userResult = await db.query(
@@ -314,6 +315,13 @@ router.post('/', async (req, res) => {
     ]);
 
     await insertDetails(client, insertResult.rows[0].id_proforma, totals.details);
+    await writeAudit(client, {
+      entity: 'proformas',
+      entityId: insertResult.rows[0].id_proforma,
+      action: 'CREAR_PROFORMA',
+      userId: req.user.id_usuario,
+      detail: { numero_proforma: numeroProforma, total: totals.total },
+    });
     await client.query('COMMIT');
 
     const proforma = await fetchProformaById(insertResult.rows[0].id_proforma);
@@ -372,6 +380,13 @@ router.put('/:id', async (req, res) => {
 
     await client.query('DELETE FROM proforma_detalles WHERE id_proforma = $1', [req.params.id]);
     await insertDetails(client, req.params.id, totals.details);
+    await writeAudit(client, {
+      entity: 'proformas',
+      entityId: req.params.id,
+      action: 'EDITAR_PROFORMA',
+      userId: req.user.id_usuario,
+      detail: { total: totals.total },
+    });
     await client.query('COMMIT');
 
     const proforma = await fetchProformaById(req.params.id);
@@ -380,6 +395,92 @@ router.put('/:id', async (req, res) => {
     await client.query('ROLLBACK');
     console.error('Error al editar proforma:', error);
     res.status(400).json({ error: error.message || 'Error al editar la proforma.' });
+  } finally {
+    client.release();
+  }
+});
+
+router.patch('/:id/approve', async (req, res) => {
+  const { editPassword } = req.body || {};
+  const client = await db.pool.connect();
+
+  try {
+    await verifyUserPassword(req.user.id_usuario, editPassword);
+    await client.query('BEGIN');
+
+    const current = await client.query(
+      'SELECT id_proforma, estado, numero_proforma FROM proformas WHERE id_proforma = $1 FOR UPDATE',
+      [req.params.id]
+    );
+    if (current.rows.length === 0) {
+      throw new Error('Proforma no encontrada.');
+    }
+    if (current.rows[0].estado !== 'BORRADOR') {
+      throw new Error('Solo se pueden aprobar proformas en estado BORRADOR.');
+    }
+
+    await client.query(
+      "UPDATE proformas SET estado = 'APROBADA', updated_at = CURRENT_TIMESTAMP WHERE id_proforma = $1",
+      [req.params.id]
+    );
+    await writeAudit(client, {
+      entity: 'proformas',
+      entityId: req.params.id,
+      action: 'APROBAR_PROFORMA',
+      userId: req.user.id_usuario,
+      detail: { numero_proforma: current.rows[0].numero_proforma },
+    });
+
+    await client.query('COMMIT');
+    const proforma = await fetchProformaById(req.params.id);
+    res.json(proforma);
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Error al aprobar proforma:', error);
+    res.status(400).json({ error: error.message || 'Error al aprobar la proforma.' });
+  } finally {
+    client.release();
+  }
+});
+
+router.patch('/:id/cancel', async (req, res) => {
+  const { editPassword, reason } = req.body || {};
+  const client = await db.pool.connect();
+
+  try {
+    await verifyUserPassword(req.user.id_usuario, editPassword);
+    await client.query('BEGIN');
+
+    const current = await client.query(
+      'SELECT id_proforma, estado, numero_proforma FROM proformas WHERE id_proforma = $1 FOR UPDATE',
+      [req.params.id]
+    );
+    if (current.rows.length === 0) {
+      throw new Error('Proforma no encontrada.');
+    }
+    if (['FACTURADA', 'ANULADA'].includes(current.rows[0].estado)) {
+      throw new Error('No se puede anular una proforma facturada o ya anulada.');
+    }
+
+    await client.query(
+      "UPDATE proformas SET estado = 'ANULADA', updated_at = CURRENT_TIMESTAMP WHERE id_proforma = $1",
+      [req.params.id]
+    );
+    await writeAudit(client, {
+      entity: 'proformas',
+      entityId: req.params.id,
+      action: 'ANULAR_PROFORMA',
+      userId: req.user.id_usuario,
+      detail: { numero_proforma: current.rows[0].numero_proforma, reason: reason || '' },
+    });
+
+    await client.query('COMMIT');
+    const proforma = await fetchProformaById(req.params.id);
+    res.json(proforma);
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Error al anular proforma:', error);
+    res.status(400).json({ error: error.message || 'Error al anular la proforma.' });
   } finally {
     client.release();
   }

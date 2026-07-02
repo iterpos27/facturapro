@@ -20,6 +20,13 @@ const createEmptyItem = () => ({
   iva_porcentaje: 0
 });
 const formatTransactionNumber = (value) => String(Number(value) || 0).padStart(6, '0');
+const getStatusBadgeClass = (status) => {
+  if (status === 'BORRADOR') return 'bg-secondary';
+  if (status === 'APROBADA') return 'bg-primary';
+  if (status === 'FACTURADA') return 'bg-success';
+  if (status === 'ANULADA') return 'bg-danger';
+  return 'bg-secondary';
+};
 const readApiResponse = async (response) => {
   const contentType = response.headers.get('content-type') || '';
   if (contentType.includes('application/json')) {
@@ -347,6 +354,11 @@ export default function ProformaManager() {
   };
 
   const openEditForm = async (proforma) => {
+    if (proforma.status !== 'BORRADOR') {
+      showAlert('Solo se pueden editar proformas en estado BORRADOR.', 'error');
+      return;
+    }
+
     const result = await Swal.fire({
       title: 'Clave requerida',
       text: `Ingresa tu clave para editar la proforma "${proforma.number}".`,
@@ -466,15 +478,55 @@ export default function ProformaManager() {
     }
   };
 
-  const handleDeleteProforma = async (id, proformaNum) => {
+  const handleApproveProforma = async (id, proformaNum) => {
     const result = await Swal.fire({
-      title: 'Eliminar Proforma',
-      text: `Ingresa tu clave para eliminar permanentemente la proforma "${proformaNum}".`,
-      icon: 'warning',
+      title: 'Aprobar Proforma',
+      text: `Ingresa tu clave para aprobar la proforma "${proformaNum}".`,
+      icon: 'question',
       input: 'password',
       inputPlaceholder: 'Clave del usuario',
       showCancelButton: true,
-      confirmButtonText: 'Si, eliminar',
+      confirmButtonText: 'Aprobar',
+      cancelButtonText: 'Cancelar',
+      confirmButtonColor: '#198754',
+      cancelButtonColor: '#8a93a2',
+      inputValidator: (value) => (!value ? 'La clave es requerida.' : undefined),
+      customClass: {
+        popup: 'swal-custom-popup',
+        confirmButton: 'btn btn-primary',
+        cancelButton: 'btn btn-secondary'
+      }
+    });
+
+    if (!result.isConfirmed) return;
+
+    try {
+      const response = await apiFetch(`/api/proformas/${id}/approve`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ editPassword: result.value }),
+      });
+      const data = await readApiResponse(response);
+      if (!response.ok) {
+        throw new Error(data.error || 'No se pudo aprobar la proforma.');
+      }
+      await loadProformas();
+      showAlert('Proforma aprobada.', 'success');
+    } catch (error) {
+      showAlert(error.message || 'No se pudo aprobar la proforma.', 'error');
+    }
+  };
+
+  const handleCancelProforma = async (id, proformaNum) => {
+    const result = await Swal.fire({
+      title: 'Anular Proforma',
+      text: `Ingresa tu clave para anular la proforma "${proformaNum}".`,
+      icon: 'warning',
+      input: 'password',
+      inputPlaceholder: 'Clave del usuario',
+      inputAttributes: { autocapitalize: 'off' },
+      showCancelButton: true,
+      confirmButtonText: 'Continuar',
       cancelButtonText: 'Cancelar',
       confirmButtonColor: '#e55353',
       cancelButtonColor: '#8a93a2',
@@ -488,20 +540,38 @@ export default function ProformaManager() {
 
     if (!result.isConfirmed) return;
 
+    const reasonResult = await Swal.fire({
+      title: 'Motivo de anulacion',
+      input: 'text',
+      inputPlaceholder: 'Ej: Cliente solicita cambios',
+      showCancelButton: true,
+      confirmButtonText: 'Anular',
+      cancelButtonText: 'Cancelar',
+      confirmButtonColor: '#e55353',
+      cancelButtonColor: '#8a93a2',
+      customClass: {
+        popup: 'swal-custom-popup',
+        confirmButton: 'btn btn-danger',
+        cancelButton: 'btn btn-secondary'
+      }
+    });
+
+    if (!reasonResult.isConfirmed) return;
+
     try {
-      const response = await apiFetch(`/api/proformas/${id}`, {
-        method: 'DELETE',
+      const response = await apiFetch(`/api/proformas/${id}/cancel`, {
+        method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ editPassword: result.value }),
+        body: JSON.stringify({ editPassword: result.value, reason: reasonResult.value || '' }),
       });
       const data = await readApiResponse(response);
       if (!response.ok) {
-        throw new Error(data.error || 'No se pudo eliminar la proforma.');
+        throw new Error(data.error || 'No se pudo anular la proforma.');
       }
       await loadProformas();
-      showAlert('Proforma eliminada con exito.', 'success');
+      showAlert('Proforma anulada.', 'success');
     } catch (error) {
-      showAlert(error.message || 'No se pudo eliminar la proforma.', 'error');
+      showAlert(error.message || 'No se pudo anular la proforma.', 'error');
     }
   };
 
@@ -817,12 +887,12 @@ export default function ProformaManager() {
                         <td>{proforma.validUntil || '-'}</td>
                         <td style={{ fontWeight: 800 }}>${proforma.total.toFixed(2)}</td>
                         <td>
-                          <span className="badge bg-secondary" style={{ fontWeight: 'bold' }}>
+                          <span className={`badge ${getStatusBadgeClass(proforma.status)}`} style={{ fontWeight: 'bold' }}>
                             {proforma.status}
                           </span>
                         </td>
                         <td>
-                          <div style={{ display: 'flex', gap: '0.5rem' }}>
+                          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
                             <button 
                               className="btn btn-info text-white" 
                               style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}
@@ -830,20 +900,33 @@ export default function ProformaManager() {
                             >
                               Ver RIDE
                             </button>
-                            <button
-                              className="btn btn-secondary"
-                              style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}
-                              onClick={() => openEditForm(proforma)}
-                            >
-                              Editar
-                            </button>
-                            <button 
-                              className="btn btn-danger" 
-                              style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}
-                              onClick={() => handleDeleteProforma(proforma.id, proforma.number)}
-                            >
-                              Eliminar
-                            </button>
+                            {proforma.status === 'BORRADOR' && (
+                              <>
+                                <button
+                                  className="btn btn-secondary"
+                                  style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}
+                                  onClick={() => openEditForm(proforma)}
+                                >
+                                  Editar
+                                </button>
+                                <button
+                                  className="btn btn-primary"
+                                  style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}
+                                  onClick={() => handleApproveProforma(proforma.id, proforma.number)}
+                                >
+                                  Aprobar
+                                </button>
+                              </>
+                            )}
+                            {['BORRADOR', 'APROBADA'].includes(proforma.status) && (
+                              <button
+                                className="btn btn-danger"
+                                style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}
+                                onClick={() => handleCancelProforma(proforma.id, proforma.number)}
+                              >
+                                Anular
+                              </button>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -857,7 +940,7 @@ export default function ProformaManager() {
                   <div key={proforma.id} className="client-mobile-card">
                     <div className="client-card-header">
                       <span className="client-name">{proforma.number}</span>
-                      <span className="badge bg-secondary" style={{ fontWeight: 'bold' }}>
+                      <span className={`badge ${getStatusBadgeClass(proforma.status)}`} style={{ fontWeight: 'bold' }}>
                         {proforma.status}
                       </span>
                     </div>
@@ -873,8 +956,9 @@ export default function ProformaManager() {
                     </div>
                     <div className="client-card-actions">
                       <button className="btn btn-info text-white" onClick={() => setViewProforma(proforma)}>Ver RIDE</button>
-                      <button className="btn btn-secondary" onClick={() => openEditForm(proforma)}>Editar</button>
-                      <button className="btn btn-danger" onClick={() => handleDeleteProforma(proforma.id, proforma.number)}>Eliminar</button>
+                      {proforma.status === 'BORRADOR' && <button className="btn btn-secondary" onClick={() => openEditForm(proforma)}>Editar</button>}
+                      {proforma.status === 'BORRADOR' && <button className="btn btn-primary" onClick={() => handleApproveProforma(proforma.id, proforma.number)}>Aprobar</button>}
+                      {['BORRADOR', 'APROBADA'].includes(proforma.status) && <button className="btn btn-danger" onClick={() => handleCancelProforma(proforma.id, proforma.number)}>Anular</button>}
                     </div>
                   </div>
                 ))}
