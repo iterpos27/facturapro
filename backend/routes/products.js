@@ -1,6 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
+const { authenticateToken } = require('./auth');
+
+// Proteger todas las rutas de productos con autenticación
+router.use(authenticateToken);
 
 // 1. Obtener todas las categorías (GET /api/products/categories)
 router.get('/categories', async (req, res) => {
@@ -41,6 +45,17 @@ router.get('/', async (req, res) => {
     res.status(500).json({ error: 'Error al obtener productos de la base de datos.' });
   }
 });
+// 3.5. Obtener el siguiente código secuencial disponible (GET /api/products/next-code)
+router.get('/next-code', async (req, res) => {
+  try {
+    const nextIdRes = await db.query("SELECT COALESCE(MAX(id_producto), 0) + 100001 AS next_val FROM productos");
+    const nextVal = String(nextIdRes.rows[0].next_val).padStart(6, '0');
+    res.json({ nextCode: nextVal });
+  } catch (error) {
+    console.error('Error al obtener el siguiente código:', error);
+    res.status(500).json({ error: 'Error al obtener el siguiente código.' });
+  }
+});
 
 // 4. Obtener un producto por su ID (GET /api/products/:id)
 router.get('/:id', async (req, res) => {
@@ -70,34 +85,68 @@ router.post('/', async (req, res) => {
     id_impuesto,
     stock_actual,
     stock_minimo,
-    activo
+    activo,
+    marca,
+    referencia
   } = req.body;
 
+  const cleanCodigo = typeof codigo === 'string' && codigo.trim() ? codigo.trim().toUpperCase() : null;
+  const cleanSku = typeof sku === 'string' && sku.trim() ? sku.trim().toUpperCase() : null;
+  const cleanNombre = typeof nombre === 'string' ? nombre.trim() : '';
+  const cleanDescripcion = typeof descripcion === 'string' ? descripcion.trim() : '';
+  const cleanMarca = typeof marca === 'string' ? marca.trim() : '';
+  const cleanReferencia = typeof referencia === 'string' ? referencia.trim() : '';
+
+  const precioCompraNum = parseFloat(precio_compra);
+  const precioVentaNum = parseFloat(precio_venta);
+  const stockActualNum = stock_actual !== undefined && stock_actual !== null && stock_actual !== '' ? parseFloat(stock_actual) : 0;
+  const stockMinimoNum = stock_minimo !== undefined && stock_minimo !== null && stock_minimo !== '' ? parseFloat(stock_minimo) : 0;
+
+  if (!cleanNombre) {
+    return res.status(400).json({ error: 'El nombre del producto es obligatorio.' });
+  }
+
+  if (
+    [precioCompraNum, precioVentaNum, stockActualNum, stockMinimoNum].some(
+      (value) => Number.isNaN(value) || value < 0
+    )
+  ) {
+    return res.status(400).json({ error: 'Precios y stock deben ser numeros validos mayores o iguales a 0.' });
+  }
+
   try {
-    // Si no se envía el código, se autogenera una serie secuencial de 6 dígitos tipo 000001
+    let generatedCodigo = cleanCodigo;
+    if (!generatedCodigo) {
+      const nextIdRes = await db.query("SELECT COALESCE(MAX(id_producto), 0) + 100001 AS next_val FROM productos");
+      generatedCodigo = String(nextIdRes.rows[0].next_val).padStart(6, '0');
+    }
+    const generatedSku = cleanSku || ('0' + generatedCodigo);
+
     const query = `
       INSERT INTO productos (
         codigo, sku, nombre, descripcion, id_categoria, 
-        precio_compra, precio_venta, id_impuesto, stock_actual, stock_minimo, activo
+        precio_compra, precio_venta, id_impuesto, stock_actual, stock_minimo, activo,
+        marca, referencia
       )
       VALUES (
-        COALESCE($1, (SELECT LPAD(CAST(COALESCE(MAX(id_producto), 0) + 1 AS VARCHAR), 6, '0') FROM productos)),
-        $2, $3, $4, $5, $6, $7, $8, $9, $10, $11
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13
       )
       RETURNING *
     `;
     const result = await db.query(query, [
-      codigo || null,
-      sku || null,
-      nombre,
-      descripcion || '',
+      generatedCodigo,
+      generatedSku,
+      cleanNombre,
+      cleanDescripcion,
       id_categoria ? parseInt(id_categoria, 10) : null,
-      precio_compra,
-      precio_venta,
+      precioCompraNum,
+      precioVentaNum,
       id_impuesto ? parseInt(id_impuesto, 10) : null,
-      stock_actual || 0.00,
-      stock_minimo || 0.00,
-      activo !== undefined ? activo : true
+      stockActualNum,
+      stockMinimoNum,
+      activo !== undefined ? activo : true,
+      cleanMarca,
+      cleanReferencia
     ]);
     res.status(201).json(result.rows[0]);
   } catch (error) {
@@ -123,10 +172,37 @@ router.put('/:id', async (req, res) => {
     id_impuesto,
     stock_actual,
     stock_minimo,
-    activo
+    activo,
+    marca,
+    referencia
   } = req.body;
 
+  const cleanCodigo = typeof codigo === 'string' && codigo.trim() ? codigo.trim().toUpperCase() : null;
+  const cleanSku = typeof sku === 'string' && sku.trim() ? sku.trim().toUpperCase() : null;
+  const cleanNombre = typeof nombre === 'string' ? nombre.trim() : '';
+  const cleanDescripcion = typeof descripcion === 'string' ? descripcion.trim() : '';
+  const cleanMarca = typeof marca === 'string' ? marca.trim() : '';
+  const cleanReferencia = typeof referencia === 'string' ? referencia.trim() : '';
+
+  const precioCompraNum = parseFloat(precio_compra);
+  const precioVentaNum = parseFloat(precio_venta);
+  const stockMinimoNum = stock_minimo !== undefined && stock_minimo !== null && stock_minimo !== '' ? parseFloat(stock_minimo) : 0;
+
+  if (!cleanNombre) {
+    return res.status(400).json({ error: 'El nombre del producto es obligatorio.' });
+  }
+
+  if (
+    [precioCompraNum, precioVentaNum, stockMinimoNum].some(
+      (value) => Number.isNaN(value) || value < 0
+    )
+  ) {
+    return res.status(400).json({ error: 'Precios y stock minimo deben ser numeros validos mayores o iguales a 0.' });
+  }
+
   try {
+    const generatedSku = cleanSku || ('0' + cleanCodigo);
+
     const query = `
       UPDATE productos
       SET codigo = $1,
@@ -137,25 +213,27 @@ router.put('/:id', async (req, res) => {
           precio_compra = $6,
           precio_venta = $7,
           id_impuesto = $8,
-          stock_actual = $9,
-          stock_minimo = $10,
-          activo = $11,
+          stock_minimo = $9,
+          activo = $10,
+          marca = $11,
+          referencia = $12,
           updated_at = CURRENT_TIMESTAMP
-      WHERE id_producto = $12
+      WHERE id_producto = $13
       RETURNING *
     `;
     const result = await db.query(query, [
-      codigo || null,
-      sku || null,
-      nombre,
-      descripcion || '',
+      cleanCodigo,
+      generatedSku,
+      cleanNombre,
+      cleanDescripcion,
       id_categoria ? parseInt(id_categoria, 10) : null,
-      precio_compra,
-      precio_venta,
+      precioCompraNum,
+      precioVentaNum,
       id_impuesto ? parseInt(id_impuesto, 10) : null,
-      stock_actual || 0.00,
-      stock_minimo || 0.00,
+      stockMinimoNum,
       activo !== undefined ? activo : true,
+      cleanMarca,
+      cleanReferencia,
       id
     ]);
 
@@ -176,6 +254,15 @@ router.put('/:id', async (req, res) => {
 router.delete('/:id', async (req, res) => {
   const { id } = req.params;
   try {
+    const movementCountResult = await db.query('SELECT COUNT(*)::int AS total FROM movimientos_inventario WHERE id_producto = $1', [id]);
+    const invoiceCountResult = await db.query('SELECT COUNT(*)::int AS total FROM factura_detalles WHERE id_producto = $1', [id]);
+
+    if (movementCountResult.rows[0].total > 0 || invoiceCountResult.rows[0].total > 0) {
+      return res.status(400).json({
+        error: 'No se puede eliminar el producto porque ya tiene movimientos o facturas asociadas.',
+      });
+    }
+
     const result = await db.query('DELETE FROM productos WHERE id_producto = $1 RETURNING id_producto', [id]);
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Producto no encontrado.' });
@@ -183,6 +270,9 @@ router.delete('/:id', async (req, res) => {
     res.json({ message: 'Producto eliminado correctamente.', id_producto: result.rows[0].id_producto });
   } catch (error) {
     console.error('Error al eliminar producto:', error);
+    if (error.code === '42P01') {
+      return res.status(400).json({ error: 'No se puede validar el historial del producto porque faltan tablas del modulo de inventario o facturacion.' });
+    }
     res.status(500).json({ error: 'Error al eliminar el producto.' });
   }
 });

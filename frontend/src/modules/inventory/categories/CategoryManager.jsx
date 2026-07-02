@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import Swal from 'sweetalert2';
-import { apiFetch, apiUrl } from '../lib/api';
+import { apiFetch, apiUrl } from '../../../lib/api';
 
 export default function CategoryManager() {
   // 1. ==========================================
@@ -11,6 +11,7 @@ export default function CategoryManager() {
   const [searchQuery, setSearchQuery] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [editingCategory, setEditingCategory] = useState(null);
+  const [saving, setSaving] = useState(false);
 
   // Campos del formulario
   const [nombre, setNombre] = useState('');
@@ -23,6 +24,17 @@ export default function CategoryManager() {
   useEffect(() => {
     fetchCategories();
   }, []);
+
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape' && showForm && !saving) {
+        handleCancel();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [showForm, saving, handleCancel]);
 
   const fetchCategories = async () => {
     setLoading(true);
@@ -70,13 +82,14 @@ export default function CategoryManager() {
     setShowForm(true);
   };
 
-  const handleCancel = () => {
+  function handleCancel() {
+    if (saving) return;
     setEditingCategory(null);
     setNombre('');
     setDescripcion('');
     setActivo(true);
     setShowForm(false);
-  };
+  }
 
   const handleDelete = async (id, catName) => {
     const result = await Swal.fire({
@@ -136,6 +149,7 @@ export default function CategoryManager() {
     const method = editingCategory ? 'PUT' : 'POST';
 
     try {
+      setSaving(true);
       const response = await apiFetch(url.replace(/^https?:\/\/[^/]+/, ''), {
         method: method,
         headers: {
@@ -153,6 +167,8 @@ export default function CategoryManager() {
       fetchCategories();
     } catch (err) {
       showAlert(err.message, 'error');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -165,20 +181,25 @@ export default function CategoryManager() {
   });
 
   return (
-    <div>
-      <div className="view-header">
+    <div className="module-shell">
+      <div className="view-header module-header-card d-flex align-items-center justify-content-between">
         <div>
-          <h1>Categorías</h1>
-          <p>Módulo para clasificar y agrupar tus productos y servicios.</p>
+          <h1 className="h2 mb-1 text-dark" style={{ fontWeight: '800' }}>Categorías</h1>
+          <p className="text-secondary mb-0" style={{ fontSize: '0.92rem' }}>Clasifica y agrupa tus productos y servicios.</p>
         </div>
         
-        <button className="btn btn-primary" onClick={() => setShowForm(true)}>
-          + Nueva Categoría
-        </button>
+        <div className="d-flex align-items-center gap-3">
+          <span className="count-badge-pill">
+            {filteredCategories.length} {filteredCategories.length === 1 ? 'registro' : 'registros'}
+          </span>
+          <button className="btn btn-secondary" onClick={() => setShowForm(true)}>
+            + Nueva categoría
+          </button>
+        </div>
       </div>
 
-      <div>
-        <div className="search-bar-container">
+      <div className="client-data-panel">
+        <div className="search-bar-container client-search-wrap">
           <div className="search-input-wrapper">
             <input 
               type="text" 
@@ -273,10 +294,10 @@ export default function CategoryManager() {
       {/* FORMULARIO DE REGISTRO / EDICIÓN EN MODAL */}
       {showForm && (
         <div className="modal-overlay" onClick={handleCancel}>
-          <div className="modal-container" style={{ maxWidth: '650px' }} onClick={(e) => e.stopPropagation()}>
+          <div className="modal-container modal-container-clean compact-modal" style={{ maxWidth: '620px' }} onClick={(e) => e.stopPropagation()}>
             <button className="modal-close-btn" onClick={handleCancel} aria-label="Cerrar formulario">✕</button>
             <h2>{editingCategory ? 'Editar Categoría' : 'Nueva Categoría'}</h2>
-            <div style={{ height: '1.5rem' }}></div>
+            <p className="modal-support-copy">Clasifica productos y servicios con una descripcion corta.</p>
 
             <form onSubmit={handleSubmit}>
               <div className="form-group">
@@ -319,11 +340,11 @@ export default function CategoryManager() {
               </div>
 
               <div className="form-actions-buttons">
-                <button type="button" className="btn btn-danger" style={{ backgroundColor: '#f43f5e', color: '#ffffff' }} onClick={handleCancel}>
+                <button type="button" className="btn btn-danger" style={{ backgroundColor: '#f43f5e', color: '#ffffff' }} onClick={handleCancel} disabled={saving}>
                   Cerrar
                 </button>
-                <button type="submit" className="btn btn-primary">
-                  Guardar
+                <button type="submit" className="btn btn-primary" disabled={saving}>
+                  {saving ? 'Guardando...' : 'Guardar'}
                 </button>
               </div>
             </form>

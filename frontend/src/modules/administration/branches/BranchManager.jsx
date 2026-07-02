@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import Swal from 'sweetalert2';
-import { apiFetch, apiUrl } from '../lib/api';
+import { apiFetch, apiUrl } from '../../../lib/api';
 
 export default function BranchManager() {
   const [branches, setBranches] = useState([]);
@@ -8,6 +8,7 @@ export default function BranchManager() {
   const [searchQuery, setSearchQuery] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [editingBranch, setEditingBranch] = useState(null);
+  const [saving, setSaving] = useState(false);
 
   // Campos del formulario
   const [codigoEstablecimiento, setCodigoEstablecimiento] = useState('');
@@ -19,6 +20,17 @@ export default function BranchManager() {
   useEffect(() => {
     fetchBranches();
   }, []);
+
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape' && showForm && !saving) {
+        handleCancel();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [showForm, saving, handleCancel]);
 
   const fetchBranches = async () => {
     setLoading(true);
@@ -64,7 +76,8 @@ export default function BranchManager() {
     setShowForm(true);
   };
 
-  const handleCancel = () => {
+  function handleCancel() {
+    if (saving) return;
     setEditingBranch(null);
     setCodigoEstablecimiento('');
     setPuntoEmision('');
@@ -72,7 +85,7 @@ export default function BranchManager() {
     setDireccion('');
     setActivo(true);
     setShowForm(false);
-  };
+  }
 
   const handleDelete = async (id, bName) => {
     const result = await Swal.fire({
@@ -143,6 +156,7 @@ export default function BranchManager() {
     const method = editingBranch ? 'PUT' : 'POST';
 
     try {
+      setSaving(true);
       const response = await apiFetch(url.replace(/^https?:\/\/[^/]+/, ''), {
         method: method,
         headers: {
@@ -160,6 +174,8 @@ export default function BranchManager() {
       fetchBranches();
     } catch (err) {
       showAlert(err.message, 'error');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -174,20 +190,25 @@ export default function BranchManager() {
   });
 
   return (
-    <div>
-      <div className="view-header">
+    <div className="module-shell">
+      <div className="view-header module-header-card d-flex align-items-center justify-content-between">
         <div>
-          <h1>Establecimientos y Puntos de Emisión</h1>
-          <p>Módulo para definir las sucursales físicas y cajas autorizadas para emitir comprobantes SRI.</p>
+          <h1 className="h2 mb-1 text-dark" style={{ fontWeight: '800' }}>Sucursales</h1>
+          <p className="text-secondary mb-0" style={{ fontSize: '0.92rem' }}>Define las sucursales físicas y puntos de emisión autorizados.</p>
         </div>
         
-        <button className="btn btn-primary" onClick={() => setShowForm(true)}>
-          + Nuevo Establecimiento
-        </button>
+        <div className="d-flex align-items-center gap-3">
+          <span className="count-badge-pill">
+            {filteredBranches.length} {filteredBranches.length === 1 ? 'registro' : 'registros'}
+          </span>
+          <button className="btn btn-secondary" onClick={() => setShowForm(true)}>
+            + Nueva sucursal
+          </button>
+        </div>
       </div>
 
-      <div>
-        <div className="search-bar-container">
+      <div className="client-data-panel">
+        <div className="search-bar-container client-search-wrap">
           <div className="search-input-wrapper">
             <input 
               type="text" 
@@ -289,10 +310,10 @@ export default function BranchManager() {
 
       {showForm && (
         <div className="modal-overlay" onClick={handleCancel}>
-          <div className="modal-container" style={{ maxWidth: '700px' }} onClick={(e) => e.stopPropagation()}>
+          <div className="modal-container modal-container-clean compact-modal" style={{ maxWidth: '720px' }} onClick={(e) => e.stopPropagation()}>
             <button className="modal-close-btn" onClick={handleCancel} aria-label="Cerrar formulario">✕</button>
             <h2>{editingBranch ? 'Editar Establecimiento' : 'Nuevo Establecimiento'}</h2>
-            <div style={{ height: '1.5rem' }}></div>
+            <p className="modal-support-copy">Configura establecimiento, punto de emision y direccion fiscal.</p>
 
             <form onSubmit={handleSubmit}>
               <div className="row mb-3">
@@ -368,11 +389,11 @@ export default function BranchManager() {
               </div>
 
               <div className="form-actions-buttons">
-                <button type="button" className="btn btn-danger" style={{ backgroundColor: '#f43f5e', color: '#ffffff' }} onClick={handleCancel}>
+                <button type="button" className="btn btn-danger" style={{ backgroundColor: '#f43f5e', color: '#ffffff' }} onClick={handleCancel} disabled={saving}>
                   Cerrar
                 </button>
-                <button type="submit" className="btn btn-primary">
-                  Guardar
+                <button type="submit" className="btn btn-primary" disabled={saving}>
+                  {saving ? 'Guardando...' : 'Guardar'}
                 </button>
               </div>
             </form>

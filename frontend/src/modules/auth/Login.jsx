@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import Swal from 'sweetalert2';
-import { apiFetch } from '../lib/api';
+import { apiFetch } from '../../lib/api';
 
 export default function Login({ onLoginSuccess }) {
   const [usernameOrEmail, setUsernameOrEmail] = useState('');

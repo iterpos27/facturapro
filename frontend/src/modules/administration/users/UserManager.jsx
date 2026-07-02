@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import Swal from 'sweetalert2';
-import { apiFetch, apiUrl } from '../lib/api';
+import { apiFetch, apiUrl } from '../../../lib/api';
 
 export default function UserManager() {
   const [users, setUsers] = useState([]);
@@ -9,8 +9,7 @@ export default function UserManager() {
   const [searchQuery, setSearchQuery] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
-
-  // Campos del formulario
+  const [saving, setSaving] = useState(false);
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -21,6 +20,17 @@ export default function UserManager() {
     fetchUsers();
     fetchRoles();
   }, []);
+
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape' && showForm && !saving) {
+        handleCancel();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [showForm, saving, handleCancel]);
 
   const fetchUsers = async () => {
     setLoading(true);
@@ -60,12 +70,12 @@ export default function UserManager() {
       color: '#212529',
       iconColor: type === 'success' ? '#2eb85c' : '#e55353',
       customClass: {
-        popup: 'swal-custom-toast'
-      }
+        popup: 'swal-custom-toast',
+      },
     });
     Toast.fire({
       icon: type,
-      title: message
+      title: message,
     });
   };
 
@@ -73,13 +83,14 @@ export default function UserManager() {
     setEditingUser(user);
     setUsername(user.username);
     setEmail(user.email);
-    setPassword(''); // Dejar en blanco en edición por seguridad
+    setPassword('');
     setIdRol(user.id_rol);
     setActivo(user.activo);
     setShowForm(true);
   };
 
-  const handleCancel = () => {
+  function handleCancel() {
+    if (saving) return;
     setEditingUser(null);
     setUsername('');
     setEmail('');
@@ -87,7 +98,7 @@ export default function UserManager() {
     if (roles.length > 0) setIdRol(roles[0].id_rol);
     setActivo(true);
     setShowForm(false);
-  };
+  }
 
   const handleDelete = async (id, uName) => {
     if (uName === 'admin') {
@@ -96,11 +107,11 @@ export default function UserManager() {
     }
 
     const result = await Swal.fire({
-      title: '¿Estás seguro?',
-      text: `¿Deseas eliminar el usuario "${uName}"? Esta acción no se puede deshacer.`,
+      title: 'Estas seguro?',
+      text: `Deseas eliminar el usuario "${uName}"? Esta accion no se puede deshacer.`,
       icon: 'warning',
       showCancelButton: true,
-      confirmButtonText: 'Sí, eliminar',
+      confirmButtonText: 'Si, eliminar',
       cancelButtonText: 'Cancelar',
       background: '#ffffff',
       color: '#212529',
@@ -109,8 +120,8 @@ export default function UserManager() {
       customClass: {
         popup: 'swal-custom-popup',
         confirmButton: 'btn btn-danger',
-        cancelButton: 'btn btn-secondary'
-      }
+        cancelButton: 'btn btn-secondary',
+      },
     });
 
     if (result.isConfirmed) {
@@ -119,7 +130,7 @@ export default function UserManager() {
           method: 'DELETE',
         });
         const resultData = await response.json();
-        
+
         if (!response.ok) throw new Error(resultData.error || 'No se pudo eliminar.');
 
         showAlert('Usuario eliminado correctamente.', 'success');
@@ -143,18 +154,16 @@ export default function UserManager() {
       email,
       password: password || undefined,
       id_rol: parseInt(idRol, 10),
-      activo
+      activo,
     };
 
-    const url = editingUser 
-      ? apiUrl(`/api/users/${editingUser.id_usuario}`) 
-      : apiUrl('/api/users');
-      
+    const url = editingUser ? apiUrl(`/api/users/${editingUser.id_usuario}`) : apiUrl('/api/users');
     const method = editingUser ? 'PUT' : 'POST';
 
     try {
+      setSaving(true);
       const response = await apiFetch(url.replace(/^https?:\/\/[^/]+/, ''), {
-        method: method,
+        method,
         headers: {
           'Content-Type': 'application/json',
         },
@@ -163,48 +172,45 @@ export default function UserManager() {
 
       const result = await response.json();
 
-      if (!response.ok) throw new Error(result.error || 'Ocurrió un error inesperado.');
+      if (!response.ok) throw new Error(result.error || 'Ocurrio un error inesperado.');
 
       showAlert(editingUser ? 'Usuario actualizado correctamente.' : 'Usuario registrado exitosamente.', 'success');
       handleCancel();
       fetchUsers();
     } catch (err) {
       showAlert(err.message, 'error');
+    } finally {
+      setSaving(false);
     }
   };
 
-  const filteredUsers = users.filter(u => {
+  const filteredUsers = users.filter((u) => {
     const query = searchQuery.toLowerCase();
-    return (
-      u.username.toLowerCase().includes(query) ||
-      u.email.toLowerCase().includes(query) ||
-      u.rol_nombre.toLowerCase().includes(query)
-    );
+    return u.username.toLowerCase().includes(query) || u.email.toLowerCase().includes(query) || u.rol_nombre.toLowerCase().includes(query);
   });
 
   return (
-    <div>
-      <div className="view-header">
+    <div className="module-shell">
+      <div className="view-header module-header-card d-flex align-items-center justify-content-between">
         <div>
-          <h1>Usuarios y Roles</h1>
-          <p>Módulo para configurar operadores, vendedores y administradores.</p>
+          <h1 className="h2 mb-1 text-dark" style={{ fontWeight: '800' }}>Usuarios</h1>
+          <p className="text-secondary mb-0" style={{ fontSize: '0.92rem' }}>Configura operadores, vendedores y administradores.</p>
         </div>
-        
-        <button className="btn btn-primary" onClick={() => setShowForm(true)}>
-          + Nuevo Usuario
-        </button>
+
+        <div className="d-flex align-items-center gap-3">
+          <span className="count-badge-pill">
+            {filteredUsers.length} {filteredUsers.length === 1 ? 'registro' : 'registros'}
+          </span>
+          <button className="btn btn-secondary" onClick={() => setShowForm(true)}>
+            + Nuevo usuario
+          </button>
+        </div>
       </div>
 
-      <div>
-        <div className="search-bar-container">
+      <div className="client-data-panel">
+        <div className="search-bar-container client-search-wrap">
           <div className="search-input-wrapper">
-            <input 
-              type="text" 
-              className="form-control" 
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Buscar usuarios por nombre, correo o rol..."
-            />
+            <input type="text" className="form-control" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Buscar usuarios por nombre, correo o rol..." />
           </div>
         </div>
 
@@ -219,14 +225,14 @@ export default function UserManager() {
         ) : (
           <div>
             <div className="table-responsive desktop-only">
-              <table className="table table-striped table-hover align-middle border">
-                <thead className="table-light">
+              <table className="table table-hover align-middle client-table">
+                <thead>
                   <tr>
                     <th>Usuario</th>
-                    <th>Correo Electrónico</th>
+                    <th>Correo Electronico</th>
                     <th>Rol</th>
                     <th>Estado</th>
-                    <th style={{ width: '160px' }}>Acciones</th>
+                    <th style={{ width: '170px' }}>Acciones</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -235,29 +241,19 @@ export default function UserManager() {
                       <td style={{ fontWeight: '600' }}>{u.username}</td>
                       <td>{u.email}</td>
                       <td>
-                        <span className="badge badge-ruc" style={{ backgroundColor: '#ebedef', color: '#4f5d73' }}>
-                          {u.rol_nombre}
-                        </span>
+                        <span className="module-badge module-badge-role">{u.rol_nombre}</span>
                       </td>
                       <td>
-                        <span className={`badge ${u.activo ? 'badge-cedula' : 'badge-consumidor'}`} style={{ backgroundColor: u.activo ? '#d2f4ea' : '#f8d7da', color: u.activo ? '#14a44d' : '#dc3545' }}>
+                        <span className={`module-badge ${u.activo ? 'module-badge-active' : 'module-badge-inactive'}`}>
                           {u.activo ? 'Activo' : 'Inactivo'}
                         </span>
                       </td>
                       <td>
-                        <div style={{ display: 'flex', gap: '0.5rem' }}>
-                          <button 
-                            className="btn btn-secondary" 
-                            style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}
-                            onClick={() => handleEdit(u)}
-                          >
+                        <div className="client-table-actions">
+                          <button className="btn btn-secondary client-action-btn" onClick={() => handleEdit(u)}>
                             Editar
                           </button>
-                          <button 
-                            className="btn btn-danger" 
-                            style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}
-                            onClick={() => handleDelete(u.id_usuario, u.username)}
-                          >
+                          <button className="btn btn-danger client-action-btn" onClick={() => handleDelete(u.id_usuario, u.username)}>
                             Eliminar
                           </button>
                         </div>
@@ -273,7 +269,7 @@ export default function UserManager() {
                 <div key={u.id_usuario} className="client-mobile-card">
                   <div className="client-card-header">
                     <span className="client-name">{u.username}</span>
-                    <span className={`badge ${u.activo ? 'badge-cedula' : 'badge-consumidor'}`} style={{ backgroundColor: u.activo ? '#d2f4ea' : '#f8d7da', color: u.activo ? '#14a44d' : '#dc3545' }}>
+                    <span className={`module-badge ${u.activo ? 'module-badge-active' : 'module-badge-inactive'}`}>
                       {u.activo ? 'Activo' : 'Inactivo'}
                     </span>
                   </div>
@@ -300,56 +296,30 @@ export default function UserManager() {
 
       {showForm && (
         <div className="modal-overlay" onClick={handleCancel}>
-          <div className="modal-container" style={{ maxWidth: '650px' }} onClick={(e) => e.stopPropagation()}>
-            <button className="modal-close-btn" onClick={handleCancel} aria-label="Cerrar formulario">✕</button>
+          <div className="modal-container modal-container-clean compact-modal" style={{ maxWidth: '640px' }} onClick={(e) => e.stopPropagation()}>
+            <button className="modal-close-btn" onClick={handleCancel} aria-label="Cerrar formulario">X</button>
             <h2>{editingUser ? 'Editar Usuario' : 'Nuevo Usuario'}</h2>
-            <div style={{ height: '1.5rem' }}></div>
+            <p className="modal-support-copy">Acceso, rol y estado del usuario dentro del sistema.</p>
 
             <form onSubmit={handleSubmit}>
               <div className="form-group mb-3">
                 <label className="form-label">Nombre de usuario *</label>
-                <input 
-                  type="text" 
-                  className="form-control" 
-                  value={username} 
-                  onChange={(e) => setUsername(e.target.value)} 
-                  placeholder="Ingrese nombre de usuario"
-                  required
-                />
+                <input type="text" className="form-control" value={username} onChange={(e) => setUsername(e.target.value.trimStart())} placeholder="Ingrese nombre de usuario" required />
               </div>
 
               <div className="form-group mb-3">
-                <label className="form-label">Correo electrónico *</label>
-                <input 
-                  type="email" 
-                  className="form-control" 
-                  value={email} 
-                  onChange={(e) => setEmail(e.target.value)} 
-                  placeholder="ejemplo@facturapro.com"
-                  required
-                />
+                <label className="form-label">Correo electronico *</label>
+                <input type="email" className="form-control" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="ejemplo@facturapro.com" required />
               </div>
 
               <div className="form-group mb-3">
-                <label className="form-label">Contraseña {editingUser && '(Dejar en blanco para conservar anterior)'}</label>
-                <input 
-                  type="password" 
-                  className="form-control" 
-                  value={password} 
-                  onChange={(e) => setPassword(e.target.value)} 
-                  placeholder="Ingrese contraseña de acceso"
-                  required={!editingUser}
-                />
+                <label className="form-label">Contrasena {editingUser && '(Dejar en blanco para conservar anterior)'}</label>
+                <input type="password" className="form-control" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Ingrese contrasena de acceso" required={!editingUser} />
               </div>
 
               <div className="form-group mb-3">
                 <label className="form-label">Rol del sistema *</label>
-                <select 
-                  className="form-control" 
-                  value={idRol} 
-                  onChange={(e) => setIdRol(e.target.value)}
-                  required
-                >
+                <select className="form-control" value={idRol} onChange={(e) => setIdRol(e.target.value)} required>
                   {roles.map((r) => (
                     <option key={r.id_rol} value={r.id_rol}>
                       {r.nombre} - {r.descripcion}
@@ -361,13 +331,7 @@ export default function UserManager() {
               <div className="form-group mb-3" style={{ display: 'flex', flexDirection: 'column' }}>
                 <label className="form-label">Estado:</label>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', height: '38px' }}>
-                  <input 
-                    type="checkbox" 
-                    id="activo-usr"
-                    checked={activo} 
-                    onChange={(e) => setActivo(e.target.checked)}
-                    style={{ width: '20px', height: '20px', cursor: 'pointer' }}
-                  />
+                  <input type="checkbox" id="activo-usr" checked={activo} onChange={(e) => setActivo(e.target.checked)} style={{ width: '20px', height: '20px', cursor: 'pointer' }} />
                   <label htmlFor="activo-usr" style={{ cursor: 'pointer', fontWeight: '500' }}>
                     Usuario Activo
                   </label>
@@ -375,11 +339,11 @@ export default function UserManager() {
               </div>
 
               <div className="form-actions-buttons">
-                <button type="button" className="btn btn-danger" style={{ backgroundColor: '#f43f5e', color: '#ffffff' }} onClick={handleCancel}>
+                <button type="button" className="btn btn-danger" style={{ backgroundColor: '#f43f5e', color: '#ffffff' }} onClick={handleCancel} disabled={saving}>
                   Cerrar
                 </button>
-                <button type="submit" className="btn btn-primary">
-                  Guardar
+                <button type="submit" className="btn btn-primary" disabled={saving}>
+                  {saving ? 'Guardando...' : 'Guardar'}
                 </button>
               </div>
             </form>

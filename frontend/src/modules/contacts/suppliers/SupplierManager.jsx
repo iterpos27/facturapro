@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import Swal from 'sweetalert2';
-import { apiFetch, apiUrl } from '../lib/api';
+import CIcon from '@coreui/icons-react';
+import { cilPencil, cilTrash } from '@coreui/icons';
+import { apiFetch, apiUrl } from '../../../lib/api';
 
 export default function SupplierManager() {
   const [suppliers, setSuppliers] = useState([]);
@@ -8,6 +10,7 @@ export default function SupplierManager() {
   const [searchQuery, setSearchQuery] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [editingSupplier, setEditingSupplier] = useState(null);
+  const [saving, setSaving] = useState(false);
 
   // Campos del formulario
   const [tipoIdentificacion, setTipoIdentificacion] = useState('RUC');
@@ -16,11 +19,23 @@ export default function SupplierManager() {
   const [email, setEmail] = useState('');
   const [telefono, setTelefono] = useState('');
   const [direccion, setDireccion] = useState('');
+  const [observacion, setObservacion] = useState('');
   const [activo, setActivo] = useState(true);
 
   useEffect(() => {
     fetchSuppliers();
   }, []);
+
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape' && showForm && !saving) {
+        handleCancel();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [showForm, saving, handleCancel]);
 
   const fetchSuppliers = async () => {
     setLoading(true);
@@ -64,11 +79,13 @@ export default function SupplierManager() {
     setEmail(supplier.email);
     setTelefono(supplier.telefono || '');
     setDireccion(supplier.direccion || '');
+    setObservacion(supplier.observacion || '');
     setActivo(supplier.activo);
     setShowForm(true);
   };
 
-  const handleCancel = () => {
+  function handleCancel() {
+    if (saving) return;
     setEditingSupplier(null);
     setTipoIdentificacion('RUC');
     setIdentificacion('');
@@ -76,9 +93,10 @@ export default function SupplierManager() {
     setEmail('');
     setTelefono('');
     setDireccion('');
+    setObservacion('');
     setActivo(true);
     setShowForm(false);
-  };
+  }
 
   const handleDelete = async (id, sName) => {
     const result = await Swal.fire({
@@ -145,6 +163,7 @@ export default function SupplierManager() {
       email,
       telefono,
       direccion,
+      observacion,
       activo
     };
 
@@ -155,6 +174,7 @@ export default function SupplierManager() {
     const method = editingSupplier ? 'PUT' : 'POST';
 
     try {
+      setSaving(true);
       const response = await apiFetch(url.replace(/^https?:\/\/[^/]+/, ''), {
         method: method,
         headers: {
@@ -172,6 +192,8 @@ export default function SupplierManager() {
       fetchSuppliers();
     } catch (err) {
       showAlert(err.message, 'error');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -185,20 +207,25 @@ export default function SupplierManager() {
   });
 
   return (
-    <div>
-      <div className="view-header">
+    <div className="module-shell">
+      <div className="view-header module-header-card d-flex align-items-center justify-content-between">
         <div>
-          <h1>Catálogo de Proveedores</h1>
-          <p>Módulo para registrar y mantener a los proveedores de productos y suministros.</p>
+          <h1 className="h2 mb-1 text-dark" style={{ fontWeight: '800' }}>Proveedores</h1>
+          <p className="text-secondary mb-0" style={{ fontSize: '0.92rem' }}>Administra los proveedores de productos y suministros.</p>
         </div>
         
-        <button className="btn btn-primary" onClick={() => setShowForm(true)}>
-          + Nuevo Proveedor
-        </button>
+        <div className="d-flex align-items-center gap-3">
+          <span className="count-badge-pill">
+            {filteredSuppliers.length} {filteredSuppliers.length === 1 ? 'registro' : 'registros'}
+          </span>
+          <button className="btn btn-secondary" onClick={() => setShowForm(true)}>
+            + Nuevo proveedor
+          </button>
+        </div>
       </div>
 
-      <div>
-        <div className="search-bar-container">
+      <div className="client-data-panel">
+        <div className="search-bar-container client-search-wrap">
           <div className="search-input-wrapper">
             <input 
               type="text" 
@@ -224,44 +251,44 @@ export default function SupplierManager() {
               <table className="table table-striped table-hover align-middle border">
                 <thead className="table-light">
                   <tr>
-                    <th>Nombre / Razón Social</th>
-                    <th>Tipo Doc. / No. Identificación</th>
-                    <th>Correo Electrónico</th>
+                    <th>Identificación</th>
+                    <th>Razón Social</th>
+                    <th>Dirección</th>
+                    <th>Correo</th>
                     <th>Teléfono</th>
-                    <th>Estado</th>
+                    <th>Observación</th>
                     <th style={{ width: '160px' }}>Acciones</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filteredSuppliers.map((s) => (
                     <tr key={s.id_proveedor}>
-                      <td style={{ fontWeight: '600' }}>{s.nombre}</td>
                       <td>
                         <span className="badge badge-ruc" style={{ marginRight: '0.5rem', backgroundColor: '#ebedef', color: '#4f5d73' }}>{s.tipo_identificacion}</span>
                         <span>{s.identificacion}</span>
                       </td>
+                      <td style={{ fontWeight: '600' }}>{s.nombre}</td>
+                      <td>{s.direccion || '-'}</td>
                       <td>{s.email}</td>
                       <td>{s.telefono || '-'}</td>
-                      <td>
-                        <span className={`badge ${s.activo ? 'badge-cedula' : 'badge-consumidor'}`} style={{ backgroundColor: s.activo ? '#d2f4ea' : '#f8d7da', color: s.activo ? '#14a44d' : '#dc3545' }}>
-                          {s.activo ? 'Activo' : 'Inactivo'}
-                        </span>
-                      </td>
+                      <td style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>{s.observacion || '-'}</td>
                       <td>
                         <div style={{ display: 'flex', gap: '0.5rem' }}>
                           <button 
                             className="btn btn-secondary" 
-                            style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}
+                            style={{ padding: '0.35rem 0.5rem', display: 'inline-flex', alignItems: 'center' }}
                             onClick={() => handleEdit(s)}
+                            title="Editar"
                           >
-                            Editar
+                            <CIcon icon={cilPencil} size="sm" />
                           </button>
                           <button 
                             className="btn btn-danger" 
-                            style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}
+                            style={{ padding: '0.35rem 0.5rem', display: 'inline-flex', alignItems: 'center' }}
                             onClick={() => handleDelete(s.id_proveedor, s.nombre)}
+                            title="Eliminar"
                           >
-                            Eliminar
+                            <CIcon icon={cilTrash} size="sm" />
                           </button>
                         </div>
                       </td>
@@ -285,14 +312,40 @@ export default function SupplierManager() {
                       <span className="info-label">Identificación ({s.tipo_identificacion}):</span>
                       <span className="info-val">{s.identificacion}</span>
                     </div>
+                    {s.direccion && (
+                      <div className="client-card-info-item">
+                        <span className="info-label">Dirección:</span>
+                        <span className="info-val">{s.direccion}</span>
+                      </div>
+                    )}
                     <div className="client-card-info-item">
                       <span className="info-label">Correo / Teléfono:</span>
                       <span className="info-val">{s.email} / {s.telefono || '-'}</span>
                     </div>
+                    {s.observacion && (
+                      <div className="client-card-info-item">
+                        <span className="info-label">Observación:</span>
+                        <span className="info-val">{s.observacion}</span>
+                      </div>
+                    )}
                   </div>
-                  <div className="client-card-actions">
-                    <button className="btn btn-secondary" onClick={() => handleEdit(s)}>Editar</button>
-                    <button className="btn btn-danger" onClick={() => handleDelete(s.id_proveedor, s.nombre)}>Eliminar</button>
+                  <div className="client-card-actions" style={{ display: 'flex', gap: '0.5rem' }}>
+                    <button
+                      className="btn btn-secondary"
+                      onClick={() => handleEdit(s)}
+                      title="Editar"
+                      style={{ padding: '0.35rem 0.5rem', display: 'inline-flex', alignItems: 'center' }}
+                    >
+                      <CIcon icon={cilPencil} size="sm" />
+                    </button>
+                    <button
+                      className="btn btn-danger"
+                      onClick={() => handleDelete(s.id_proveedor, s.nombre)}
+                      title="Eliminar"
+                      style={{ padding: '0.35rem 0.5rem', display: 'inline-flex', alignItems: 'center' }}
+                    >
+                      <CIcon icon={cilTrash} size="sm" />
+                    </button>
                   </div>
                 </div>
               ))}
@@ -303,117 +356,127 @@ export default function SupplierManager() {
 
       {showForm && (
         <div className="modal-overlay" onClick={handleCancel}>
-          <div className="modal-container" style={{ maxWidth: '750px' }} onClick={(e) => e.stopPropagation()}>
+          <div className="modal-container modal-container-clean compact-modal" style={{ maxWidth: '760px' }} onClick={(e) => e.stopPropagation()}>
             <button className="modal-close-btn" onClick={handleCancel} aria-label="Cerrar formulario">✕</button>
             <h2>{editingSupplier ? 'Editar Proveedor' : 'Nuevo Proveedor'}</h2>
-            <div style={{ height: '1.5rem' }}></div>
+            <p className="modal-support-copy">Datos tributarios y contacto principal del proveedor.</p>
 
             <form onSubmit={handleSubmit}>
-              <div className="row mb-3">
-                <div className="col-md-4">
-                  <div className="form-group mb-3">
-                    <label className="form-label">Tipo de identificación *</label>
-                    <select
-                      className="form-control"
-                      value={tipoIdentificacion}
-                      onChange={(e) => setTipoIdentificacion(e.target.value)}
-                    >
-                      <option value="RUC">RUC</option>
-                      <option value="CEDULA">Cédula</option>
-                      <option value="PASAPORTE">Pasaporte</option>
-                    </select>
-                  </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(12, 1fr)', gap: '1rem' }}>
+                <div className="form-group mb-3" style={{ gridColumn: 'span 4' }}>
+                  <label className="form-label">Tipo de identificación *</label>
+                  <select
+                    className="form-control"
+                    value={tipoIdentificacion}
+                    onChange={(e) => {
+                      setTipoIdentificacion(e.target.value);
+                      setIdentificacion('');
+                    }}
+                  >
+                    <option value="RUC">RUC</option>
+                    <option value="CEDULA">Cédula</option>
+                    <option value="PASAPORTE">Pasaporte</option>
+                  </select>
                 </div>
 
-                <div className="col-md-8">
-                  <div className="form-group mb-3">
-                    <label className="form-label">Número de identificación *</label>
-                    <input 
-                      type="text" 
-                      className="form-control" 
-                      value={identificacion} 
-                      onChange={(e) => setIdentificacion(e.target.value.replace(/\D/g, ''))} 
-                      placeholder="Ingrese número de identificación"
-                      required
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div className="form-group mb-3">
-                <label className="form-label">Nombre / Razón Social *</label>
-                <input 
-                  type="text" 
-                  className="form-control" 
-                  value={nombre} 
-                  onChange={(e) => setNombre(e.target.value)} 
-                  placeholder="Ingrese nombre de la empresa proveedora"
-                  required
-                />
-              </div>
-
-              <div className="row mb-3">
-                <div className="col-md-6">
-                  <div className="form-group mb-3">
-                    <label className="form-label">Correo electrónico *</label>
-                    <input 
-                      type="email" 
-                      className="form-control" 
-                      value={email} 
-                      onChange={(e) => setEmail(e.target.value)} 
-                      placeholder="ej: contacto@proveedor.com"
-                      required
-                    />
-                  </div>
-                </div>
-
-                <div className="col-md-6">
-                  <div className="form-group mb-3">
-                    <label className="form-label">Teléfono de contacto</label>
-                    <input 
-                      type="text" 
-                      className="form-control" 
-                      value={telefono} 
-                      onChange={(e) => setTelefono(e.target.value)} 
-                      placeholder="Número de teléfono"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div className="form-group mb-3">
-                <label className="form-label">Dirección física</label>
-                <input 
-                  type="text" 
-                  className="form-control" 
-                  value={direccion} 
-                  onChange={(e) => setDireccion(e.target.value)} 
-                  placeholder="Dirección del proveedor"
-                />
-              </div>
-
-              <div className="form-group mb-3" style={{ display: 'flex', flexDirection: 'column' }}>
-                <label className="form-label">Estado:</label>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', height: '38px' }}>
+                <div className="form-group mb-3" style={{ gridColumn: 'span 8' }}>
+                  <label className="form-label">Número de identificación *</label>
                   <input 
-                    type="checkbox" 
-                    id="activo-sup"
-                    checked={activo} 
-                    onChange={(e) => setActivo(e.target.checked)}
-                    style={{ width: '20px', height: '20px', cursor: 'pointer' }}
+                    type="text" 
+                    className="form-control" 
+                    value={identificacion} 
+                    onChange={(e) => {
+                      const rawValue = e.target.value;
+                      const nextValue = tipoIdentificacion === 'PASAPORTE'
+                        ? rawValue.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 16)
+                        : rawValue.replace(/\D/g, '').slice(0, tipoIdentificacion === 'RUC' ? 13 : 10);
+                      setIdentificacion(nextValue);
+                    }} 
+                    placeholder="Ingrese número de identificación"
+                    required
                   />
-                  <label htmlFor="activo-sup" style={{ cursor: 'pointer', fontWeight: '500' }}>
-                    Proveedor Activo
-                  </label>
+                </div>
+
+                <div className="form-group mb-3" style={{ gridColumn: 'span 12' }}>
+                  <label className="form-label">Nombre / Razón Social *</label>
+                  <input 
+                    type="text" 
+                    className="form-control" 
+                    value={nombre} 
+                    onChange={(e) => setNombre(e.target.value)} 
+                    placeholder="Ingrese nombre de la empresa proveedora"
+                    required
+                  />
+                </div>
+
+                <div className="form-group mb-3" style={{ gridColumn: 'span 8' }}>
+                  <label className="form-label">Correo electrónico *</label>
+                  <input 
+                    type="email" 
+                    className="form-control" 
+                    value={email} 
+                    onChange={(e) => setEmail(e.target.value)} 
+                    placeholder="ej: contacto@proveedor.com"
+                    required
+                  />
+                </div>
+
+                <div className="form-group mb-3" style={{ gridColumn: 'span 4' }}>
+                  <label className="form-label">Teléfono de contacto</label>
+                  <input 
+                    type="text" 
+                    className="form-control" 
+                    value={telefono} 
+                    onChange={(e) => setTelefono(e.target.value.replace(/[^\d+]/g, '').slice(0, 15))} 
+                    placeholder="Número de teléfono"
+                  />
+                </div>
+
+                <div className="form-group mb-3" style={{ gridColumn: 'span 12' }}>
+                  <label className="form-label">Dirección física</label>
+                  <input 
+                    type="text" 
+                    className="form-control" 
+                    value={direccion} 
+                    onChange={(e) => setDireccion(e.target.value)} 
+                    placeholder="Dirección del proveedor"
+                  />
+                </div>
+
+                <div className="form-group mb-3" style={{ gridColumn: 'span 12' }}>
+                  <label className="form-label">Observación</label>
+                  <input 
+                    type="text" 
+                    className="form-control" 
+                    value={observacion} 
+                    onChange={(e) => setObservacion(e.target.value)} 
+                    placeholder="Ingrese alguna observación"
+                  />
+                </div>
+
+                <div className="form-group mb-3" style={{ gridColumn: 'span 12', display: 'flex', flexDirection: 'column' }}>
+                  <label className="form-label">Estado:</label>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', height: '38px' }}>
+                    <input 
+                      type="checkbox" 
+                      id="activo-sup"
+                      checked={activo} 
+                      onChange={(e) => setActivo(e.target.checked)}
+                      style={{ width: '20px', height: '20px', cursor: 'pointer' }}
+                    />
+                    <label htmlFor="activo-sup" style={{ cursor: 'pointer', fontWeight: '500', marginBottom: 0 }}>
+                      Proveedor Activo
+                    </label>
+                  </div>
                 </div>
               </div>
 
               <div className="form-actions-buttons">
-                <button type="button" className="btn btn-danger" style={{ backgroundColor: '#f43f5e', color: '#ffffff' }} onClick={handleCancel}>
+                <button type="button" className="btn btn-danger" style={{ backgroundColor: '#f43f5e', color: '#ffffff' }} onClick={handleCancel} disabled={saving}>
                   Cerrar
                 </button>
-                <button type="submit" className="btn btn-primary">
-                  Guardar
+                <button type="submit" className="btn btn-primary" disabled={saving}>
+                  {saving ? 'Guardando...' : 'Guardar'}
                 </button>
               </div>
             </form>

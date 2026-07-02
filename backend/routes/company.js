@@ -1,6 +1,11 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
+const { authenticateToken, authorizeRoles } = require('./auth');
+
+// Proteger todas las rutas del enrutador de empresa
+router.use(authenticateToken);
+router.use(authorizeRoles('ADMINISTRADOR'));
 
 // 1. Obtener datos de la empresa (GET /api/company)
 router.get('/', async (req, res) => {

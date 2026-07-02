@@ -1,6 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
+const { authenticateToken } = require('./auth');
+
+// Proteger todas las rutas de facturación con autenticación
+router.use(authenticateToken);
 
 // Helper para rellenar ceros del secuencial (e.g. 1 -> 000000001)
 const formatSequential = (num) => {
@@ -66,7 +70,7 @@ router.get('/:id', async (req, res) => {
 
 // 3. Registrar una nueva factura (POST /api/invoices)
 router.post('/', async (req, res) => {
-  const { id_cliente, id_usuario, id_metodo_pago, items } = req.body;
+  const { id_cliente, id_usuario, id_metodo_pago, id_proforma, items } = req.body;
 
   if (!id_cliente || !id_usuario || !id_metodo_pago || !items || items.length === 0) {
     return res.status(400).json({ error: 'Faltan datos requeridos para emitir la factura.' });
@@ -75,6 +79,22 @@ router.post('/', async (req, res) => {
   const client = await db.pool.connect();
   try {
     await client.query('BEGIN');
+
+    if (id_proforma) {
+      const proformaRes = await client.query(
+        'SELECT estado FROM proformas WHERE id_proforma = $1 FOR UPDATE',
+        [id_proforma]
+      );
+      if (proformaRes.rows.length === 0) {
+        throw new Error('La proforma seleccionada no existe.');
+      }
+      if (proformaRes.rows[0].estado === 'FACTURADA') {
+        throw new Error('La proforma seleccionada ya fue facturada.');
+      }
+      if (proformaRes.rows[0].estado === 'ANULADA') {
+        throw new Error('No se puede facturar una proforma anulada.');
+      }
+    }
 
     // 1. Buscar la sucursal predeterminada activa
     const branchRes = await client.query(`
@@ -195,8 +215,8 @@ router.post('/', async (req, res) => {
     const insFacturaQuery = `
       INSERT INTO facturas (
         id_sucursal, secuencial, numero_factura, id_cliente, id_usuario, id_sesion_caja,
-        subtotal_sin_impuestos, subtotal_con_iva, subtotal_iva_cero, valor_iva, total, id_metodo_pago
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+        subtotal_sin_impuestos, subtotal_con_iva, subtotal_iva_cero, valor_iva, total, id_metodo_pago, id_proforma
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
       RETURNING *
     `;
     const invoiceInserted = await client.query(insFacturaQuery, [
@@ -211,7 +231,8 @@ router.post('/', async (req, res) => {
       subtotalIvaCero,
       valorIvaTotal,
       totalFactura,
-      id_metodo_pago
+      id_metodo_pago,
+      id_proforma || null
     ]);
     const id_factura = invoiceInserted.rows[0].id_factura;
 
@@ -247,6 +268,13 @@ router.post('/', async (req, res) => {
         SET stock_actual = stock_actual - $1 
         WHERE id_producto = $2
       `, [line.cantidad, line.id_producto]);
+    }
+
+    if (id_proforma) {
+      await client.query(
+        "UPDATE proformas SET estado = 'FACTURADA', updated_at = CURRENT_TIMESTAMP WHERE id_proforma = $1",
+        [id_proforma]
+      );
     }
 
     await client.query('COMMIT');

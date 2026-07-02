@@ -1,6 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
+const { authenticateToken } = require('./auth');
+
+// Proteger todas las rutas de caja con autenticación
+router.use(authenticateToken);
 
 // 1. Obtener lista de cajas (GET /api/cash-registers/list)
 router.get('/list', async (req, res) => {

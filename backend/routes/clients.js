@@ -1,6 +1,62 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
+const { authenticateToken } = require('./auth');
+
+// Proteger todas las rutas de clientes con autenticación
+router.use(authenticateToken);
+
+const CONSUMIDOR_FINAL_ID = '9999999999999';
+
+function validateCedulaEcuador(value) {
+  if (!/^\d{10}$/.test(value)) return false;
+  const province = parseInt(value.slice(0, 2), 10);
+  const thirdDigit = parseInt(value[2], 10);
+
+  if (province < 1 || province > 24 || thirdDigit > 5) return false;
+
+  const coefficients = [2, 1, 2, 1, 2, 1, 2, 1, 2];
+  const total = coefficients.reduce((sum, coefficient, index) => {
+    let result = parseInt(value[index], 10) * coefficient;
+    if (result >= 10) result -= 9;
+    return sum + result;
+  }, 0);
+
+  const verifier = (10 - (total % 10)) % 10;
+  return verifier === parseInt(value[9], 10);
+}
+
+function validateRucEcuador(value) {
+  if (!/^\d{13}$/.test(value)) return false;
+  if (value === CONSUMIDOR_FINAL_ID) return true;
+
+  const province = parseInt(value.slice(0, 2), 10);
+  const thirdDigit = parseInt(value[2], 10);
+
+  if (province < 1 || province > 24) return false;
+
+  if (thirdDigit < 6) {
+    return validateCedulaEcuador(value.slice(0, 10)) && value.slice(10) !== '000';
+  }
+
+  if (thirdDigit === 6) {
+    const coefficients = [3, 2, 7, 6, 5, 4, 3, 2];
+    const total = coefficients.reduce((sum, coefficient, index) => sum + parseInt(value[index], 10) * coefficient, 0);
+    const verifier = 11 - (total % 11);
+    const expected = verifier === 11 ? 0 : verifier;
+    return expected === parseInt(value[8], 10) && value.slice(9) !== '0000';
+  }
+
+  if (thirdDigit === 9) {
+    const coefficients = [4, 3, 2, 7, 6, 5, 4, 3, 2];
+    const total = coefficients.reduce((sum, coefficient, index) => sum + parseInt(value[index], 10) * coefficient, 0);
+    const verifier = 11 - (total % 11);
+    const expected = verifier === 11 ? 0 : verifier;
+    return expected === parseInt(value[9], 10) && value.slice(10) !== '000';
+  }
+
+  return false;
+}
 
 // 1. Obtener todos los clientes (GET /api/clients)
 router.get('/', async (req, res) => {
@@ -40,6 +96,34 @@ router.post('/', async (req, res) => {
     person_type 
   } = req.body;
 
+  const cleanName = typeof name === 'string' ? name.trim() : '';
+  const cleanIdentification = typeof identification_number === 'string' ? identification_number.trim() : '';
+  const cleanEmail = typeof email === 'string' ? email.trim().toLowerCase() : '';
+  const cleanPhone = typeof phone === 'string' ? phone.trim() : null;
+  const cleanAddress = typeof address === 'string' ? address.trim() : null;
+  const cleanObservation = typeof observation === 'string' ? observation.trim() : null;
+  const cleanPersonType = person_type === 'JURIDICA' ? 'JURIDICA' : 'NATURAL';
+
+  if (!cleanName || !cleanIdentification || !cleanEmail) {
+    return res.status(400).json({ error: 'Nombre, identificacion y correo son obligatorios.' });
+  }
+
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+    return res.status(400).json({ error: 'El correo electronico no tiene un formato valido.' });
+  }
+
+  if (cleanIdentification !== CONSUMIDOR_FINAL_ID) {
+    if (cleanIdentification.length === 10 && !validateCedulaEcuador(cleanIdentification)) {
+      return res.status(400).json({ error: 'La cedula ecuatoriana no es valida.' });
+    }
+    if (cleanIdentification.length === 13 && !validateRucEcuador(cleanIdentification)) {
+      return res.status(400).json({ error: 'El RUC ecuatoriano no es valido.' });
+    }
+    if (![10, 13].includes(cleanIdentification.length)) {
+      return res.status(400).json({ error: 'La identificacion debe ser una cedula de 10 digitos o un RUC de 13 digitos.' });
+    }
+  }
+
   try {
     const query = `
       INSERT INTO clients (name, identification_number, email, phone, address, observation, person_type)
@@ -47,13 +131,13 @@ router.post('/', async (req, res) => {
       RETURNING *
     `;
     const result = await db.query(query, [
-      name, 
-      identification_number, 
-      email, 
-      phone, 
-      address, 
-      observation, 
-      person_type || 'NATURAL'
+      cleanName, 
+      cleanIdentification, 
+      cleanEmail, 
+      cleanPhone, 
+      cleanAddress, 
+      cleanObservation, 
+      cleanPersonType
     ]);
     res.status(201).json(result.rows[0]);
   } catch (error) {
@@ -78,6 +162,34 @@ router.put('/:id', async (req, res) => {
     person_type 
   } = req.body;
 
+  const cleanName = typeof name === 'string' ? name.trim() : '';
+  const cleanIdentification = typeof identification_number === 'string' ? identification_number.trim() : '';
+  const cleanEmail = typeof email === 'string' ? email.trim().toLowerCase() : '';
+  const cleanPhone = typeof phone === 'string' ? phone.trim() : null;
+  const cleanAddress = typeof address === 'string' ? address.trim() : null;
+  const cleanObservation = typeof observation === 'string' ? observation.trim() : null;
+  const cleanPersonType = person_type === 'JURIDICA' ? 'JURIDICA' : 'NATURAL';
+
+  if (!cleanName || !cleanIdentification || !cleanEmail) {
+    return res.status(400).json({ error: 'Nombre, identificacion y correo son obligatorios.' });
+  }
+
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+    return res.status(400).json({ error: 'El correo electronico no tiene un formato valido.' });
+  }
+
+  if (cleanIdentification !== CONSUMIDOR_FINAL_ID) {
+    if (cleanIdentification.length === 10 && !validateCedulaEcuador(cleanIdentification)) {
+      return res.status(400).json({ error: 'La cedula ecuatoriana no es valida.' });
+    }
+    if (cleanIdentification.length === 13 && !validateRucEcuador(cleanIdentification)) {
+      return res.status(400).json({ error: 'El RUC ecuatoriano no es valido.' });
+    }
+    if (![10, 13].includes(cleanIdentification.length)) {
+      return res.status(400).json({ error: 'La identificacion debe ser una cedula de 10 digitos o un RUC de 13 digitos.' });
+    }
+  }
+
   try {
     const query = `
       UPDATE clients
@@ -92,13 +204,13 @@ router.put('/:id', async (req, res) => {
       RETURNING *
     `;
     const result = await db.query(query, [
-      name, 
-      identification_number, 
-      email, 
-      phone, 
-      address, 
-      observation, 
-      person_type || 'NATURAL', 
+      cleanName, 
+      cleanIdentification, 
+      cleanEmail, 
+      cleanPhone, 
+      cleanAddress, 
+      cleanObservation, 
+      cleanPersonType, 
       id
     ]);
 

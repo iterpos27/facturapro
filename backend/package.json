@@ -11,6 +11,8 @@
     "db:migrate:phase1": "node migrate_phase1.js",
     "db:migrate:phase2-3": "node migrate_phase2_3.js",
     "db:migrate:phase4": "node migrate_phase4.js",
+    "db:migrate:proformas": "node migrate_phase5_proformas.js",
+    "db:migrate:invoice-proformas": "node migrate_phase6_invoice_proformas.js",
     "db:drop": "node migrate_drop.js",
     "db:productos": "node create_productos_table.js"
   },

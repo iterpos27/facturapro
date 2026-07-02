@@ -80,6 +80,19 @@ const authenticateToken = (req, res, next) => {
   });
 };
 
+// Middleware para restringir accesos según el rol
+const authorizeRoles = (...allowedRoles) => {
+  return (req, res, next) => {
+    if (!req.user) {
+      return res.status(401).json({ error: 'No autorizado. Falta autenticación.' });
+    }
+    if (!allowedRoles.includes(req.user.rol_nombre)) {
+      return res.status(403).json({ error: 'Acceso denegado. No tienes permisos para esta acción.' });
+    }
+    next();
+  };
+};
+
 // 2. Obtener datos del usuario actual (GET /api/auth/me)
 router.get('/me', authenticateToken, async (req, res) => {
   res.json({ user: req.user });
@@ -87,5 +100,6 @@ router.get('/me', authenticateToken, async (req, res) => {
 
 module.exports = {
   router,
-  authenticateToken
+  authenticateToken,
+  authorizeRoles
 };

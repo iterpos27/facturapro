@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import Swal from 'sweetalert2';
-import { apiFetch } from '../lib/api';
+import { apiFetch } from '../../../lib/api';
 
 export default function CashRegisterManager() {
   const [boxes, setBoxes] = useState([]);
@@ -171,10 +171,10 @@ export default function CashRegisterManager() {
 
   return (
     <div>
-      <div className="view-header">
+      <div className="view-header module-header-card d-flex align-items-center justify-content-between">
         <div>
-          <h1>Control de Caja y Métodos de Pago</h1>
-          <p>Módulo para abrir/cerrar turnos de cajas e identificar las formas de pago oficiales SRI.</p>
+          <h1 className="h2 mb-1 text-dark" style={{ fontWeight: '800' }}>Caja Chica</h1>
+          <p className="text-secondary mb-0" style={{ fontSize: '0.92rem' }}>Abre/cierra turnos de cajas y controla métodos de pago.</p>
         </div>
       </div>
 

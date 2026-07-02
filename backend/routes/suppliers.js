@@ -1,6 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
+const { authenticateToken } = require('./auth');
+
+// Proteger todas las rutas de proveedores con autenticación
+router.use(authenticateToken);
 
 // 1. Obtener lista de proveedores (GET /api/suppliers)
 router.get('/', async (req, res) => {
@@ -15,7 +19,7 @@ router.get('/', async (req, res) => {
 
 // 2. Crear proveedor (POST /api/suppliers)
 router.post('/', async (req, res) => {
-  const { tipo_identificacion, identificacion, nombre, email, telefono, direccion, activo } = req.body;
+  const { tipo_identificacion, identificacion, nombre, email, telefono, direccion, observacion, activo } = req.body;
 
   if (!tipo_identificacion || !identificacion || !nombre || !email) {
     return res.status(400).json({ error: 'Tipo, identificación, nombre y correo son obligatorios.' });
@@ -23,10 +27,10 @@ router.post('/', async (req, res) => {
 
   try {
     const result = await db.query(
-      `INSERT INTO proveedores (tipo_identificacion, identificacion, nombre, email, telefono, direccion, activo)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
+      `INSERT INTO proveedores (tipo_identificacion, identificacion, nombre, email, telefono, direccion, observacion, activo)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
        RETURNING *`,
-      [tipo_identificacion, identificacion, nombre, email, telefono, direccion, activo !== undefined ? activo : true]
+      [tipo_identificacion, identificacion, nombre, email, telefono, direccion, observacion || null, activo !== undefined ? activo : true]
     );
     res.status(201).json(result.rows[0]);
   } catch (error) {
@@ -41,7 +45,7 @@ router.post('/', async (req, res) => {
 // 3. Actualizar proveedor (PUT /api/suppliers/:id)
 router.put('/:id', async (req, res) => {
   const { id } = req.params;
-  const { tipo_identificacion, identificacion, nombre, email, telefono, direccion, activo } = req.body;
+  const { tipo_identificacion, identificacion, nombre, email, telefono, direccion, observacion, activo } = req.body;
 
   if (!tipo_identificacion || !identificacion || !nombre || !email) {
     return res.status(400).json({ error: 'Tipo, identificación, nombre y correo son obligatorios.' });
@@ -50,10 +54,10 @@ router.put('/:id', async (req, res) => {
   try {
     const result = await db.query(
       `UPDATE proveedores
-       SET tipo_identificacion = $1, identificacion = $2, nombre = $3, email = $4, telefono = $5, direccion = $6, activo = $7, updated_at = CURRENT_TIMESTAMP
-       WHERE id_proveedor = $8
+       SET tipo_identificacion = $1, identificacion = $2, nombre = $3, email = $4, telefono = $5, direccion = $6, observacion = $7, activo = $8, updated_at = CURRENT_TIMESTAMP
+       WHERE id_proveedor = $9
        RETURNING *`,
-      [tipo_identificacion, identificacion, nombre, email, telefono, direccion, activo, id]
+      [tipo_identificacion, identificacion, nombre, email, telefono, direccion, observacion || null, activo, id]
     );
 
     if (result.rows.length === 0) {

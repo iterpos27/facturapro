@@ -1,6 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
+const { authenticateToken } = require('./auth');
+
+// Proteger todas las rutas de categorías con autenticación
+router.use(authenticateToken);
 
 // 1. Obtener todas las categorías (GET /api/categories)
 router.get('/', async (req, res) => {

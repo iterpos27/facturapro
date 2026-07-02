@@ -1,6 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
+const { authenticateToken } = require('./auth');
+
+// Proteger todas las rutas de inventario con autenticación
+router.use(authenticateToken);
 
 // 1. Obtener lista de movimientos de inventario (GET /api/inventory/movements)
 router.get('/movements', async (req, res) => {
@@ -22,6 +26,7 @@ router.get('/movements', async (req, res) => {
 // 2. Registrar movimiento de stock y actualizar inventario del producto (POST /api/inventory/movements)
 router.post('/movements', async (req, res) => {
   const { id_producto, tipo, cantidad, motivo, referencia, id_usuario } = req.body;
+  const actorId = req.user?.id_usuario || id_usuario;
 
   if (!id_producto || !tipo || !cantidad || !motivo) {
     return res.status(400).json({ error: 'El producto, tipo de movimiento, cantidad y motivo son obligatorios.' });
@@ -65,7 +70,7 @@ router.post('/movements', async (req, res) => {
       cantidadNum,
       motivo,
       referencia || null,
-      id_usuario ? parseInt(id_usuario, 10) : null
+      actorId ? parseInt(actorId, 10) : null
     ]);
 
     // 4. Actualizar el stock_actual del producto en la tabla productos

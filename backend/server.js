@@ -33,6 +33,7 @@ const supplierRoutes = require('./routes/suppliers');
 const inventoryRoutes = require('./routes/inventory');
 const cashRegisterRoutes = require('./routes/cash_registers');
 const invoiceRoutes = require('./routes/invoices');
+const proformaRoutes = require('./routes/proformas');
 
 app.use('/api/auth', authRoutes);
 app.use('/api/clients', authenticateToken, clientRoutes);
@@ -45,6 +46,7 @@ app.use('/api/suppliers', authenticateToken, supplierRoutes);
 app.use('/api/inventory', authenticateToken, inventoryRoutes);
 app.use('/api/cash-registers', authenticateToken, cashRegisterRoutes);
 app.use('/api/invoices', authenticateToken, invoiceRoutes);
+app.use('/api/proformas', authenticateToken, proformaRoutes);
 
 
 // Manejo de errores global

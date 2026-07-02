@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import Swal from 'sweetalert2';
-import { apiFetch } from '../lib/api';
+import { apiFetch } from '../../../lib/api';
 
 export default function CompanyManager() {
   const [loading, setLoading] = useState(false);
@@ -107,18 +107,18 @@ export default function CompanyManager() {
   };
 
   return (
-    <div>
-      <div className="view-header">
+    <div className="module-shell">
+      <div className="view-header module-header-card d-flex align-items-center justify-content-between">
         <div>
-          <h1>Configuración de la Empresa</h1>
-          <p>Módulo para establecer datos tributarios requeridos para la emisión electrónica al SRI.</p>
+          <h1 className="h2 mb-1 text-dark" style={{ fontWeight: '800' }}>Empresa</h1>
+          <p className="text-secondary mb-0" style={{ fontSize: '0.92rem' }}>Configura los datos tributarios y parámetros de facturación SRI.</p>
         </div>
       </div>
 
       {loading ? (
         <p style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>Cargando datos de la empresa...</p>
       ) : (
-        <div className="card shadow-sm border mb-4">
+        <div className="client-data-panel">
           <div className="card-header bg-white py-3">
             <h5 className="mb-0 text-dark fw-bold">Parámetros de Facturación SRI</h5>
           </div>
