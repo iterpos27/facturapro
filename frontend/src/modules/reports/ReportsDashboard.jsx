@@ -95,6 +95,48 @@ export default function ReportsDashboard() {
 
             <div className="col-lg-6">
               <div className="client-data-panel">
+                <h2 className="h5 fw-bold mb-3">Cuentas por cobrar</h2>
+                <table className="table table-sm table-striped align-middle mb-0">
+                  <thead><tr><th>Factura</th><th>Cliente</th><th className="text-end">Saldo</th></tr></thead>
+                  <tbody>
+                    {(summary.receivables || []).map((row) => (
+                      <tr key={row.id_factura}><td>{row.numero_factura}</td><td>{row.cliente_nombre}</td><td className="text-end">{money(row.saldo)}</td></tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div className="col-lg-6">
+              <div className="client-data-panel">
+                <h2 className="h5 fw-bold mb-3">Stock minimo</h2>
+                <table className="table table-sm table-striped align-middle mb-0">
+                  <thead><tr><th>Codigo</th><th>Producto</th><th className="text-end">Stock</th><th className="text-end">Min.</th></tr></thead>
+                  <tbody>
+                    {(summary.lowStock || []).map((row) => (
+                      <tr key={row.codigo}><td>{row.codigo}</td><td>{row.nombre}</td><td className="text-end">{Number(row.stock_actual || 0).toFixed(2)}</td><td className="text-end">{Number(row.stock_minimo || 0).toFixed(2)}</td></tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div className="col-lg-6">
+              <div className="client-data-panel">
+                <h2 className="h5 fw-bold mb-3">Formas de pago</h2>
+                <table className="table table-sm table-striped align-middle mb-0">
+                  <thead><tr><th>Metodo</th><th className="text-end">Total</th></tr></thead>
+                  <tbody>
+                    {(summary.paymentBreakdown || []).map((row) => (
+                      <tr key={row.metodo_pago || 'SIN_METODO'}><td>{row.metodo_pago || 'Sin metodo'}</td><td className="text-end">{money(row.total)}</td></tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div className="col-lg-6">
+              <div className="client-data-panel">
                 <h2 className="h5 fw-bold mb-3">Auditoria reciente</h2>
                 <table className="table table-sm table-striped align-middle mb-0">
                   <thead><tr><th>Fecha</th><th>Usuario</th><th>Accion</th><th>Entidad</th></tr></thead>

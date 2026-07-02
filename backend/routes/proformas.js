@@ -420,7 +420,7 @@ router.patch('/:id/approve', async (req, res) => {
     }
 
     await client.query(
-      "UPDATE proformas SET estado = 'APROBADA', updated_at = CURRENT_TIMESTAMP WHERE id_proforma = $1",
+      "UPDATE proformas SET estado = 'APROBADA', aprobada_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id_proforma = $1",
       [req.params.id]
     );
     await writeAudit(client, {
@@ -449,6 +449,9 @@ router.patch('/:id/cancel', async (req, res) => {
 
   try {
     await verifyUserPassword(req.user.id_usuario, editPassword);
+    if (!String(reason || '').trim()) {
+      throw new Error('El motivo de anulacion es obligatorio.');
+    }
     await client.query('BEGIN');
 
     const current = await client.query(
@@ -463,15 +466,15 @@ router.patch('/:id/cancel', async (req, res) => {
     }
 
     await client.query(
-      "UPDATE proformas SET estado = 'ANULADA', updated_at = CURRENT_TIMESTAMP WHERE id_proforma = $1",
-      [req.params.id]
+      "UPDATE proformas SET estado = 'ANULADA', motivo_anulacion = $1, anulada_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id_proforma = $2",
+      [String(reason).trim(), req.params.id]
     );
     await writeAudit(client, {
       entity: 'proformas',
       entityId: req.params.id,
       action: 'ANULAR_PROFORMA',
       userId: req.user.id_usuario,
-      detail: { numero_proforma: current.rows[0].numero_proforma, reason: reason || '' },
+      detail: { numero_proforma: current.rows[0].numero_proforma, reason: String(reason).trim() },
     });
 
     await client.query('COMMIT');
@@ -487,19 +490,7 @@ router.patch('/:id/cancel', async (req, res) => {
 });
 
 router.delete('/:id', async (req, res) => {
-  const { editPassword } = req.body || {};
-
-  try {
-    await verifyUserPassword(req.user.id_usuario, editPassword);
-    const result = await db.query('DELETE FROM proformas WHERE id_proforma = $1 RETURNING id_proforma', [req.params.id]);
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Proforma no encontrada.' });
-    }
-    res.json({ ok: true });
-  } catch (error) {
-    console.error('Error al eliminar proforma:', error);
-    res.status(400).json({ error: error.message || 'Error al eliminar la proforma.' });
-  }
+  res.status(405).json({ error: 'Las proformas no se eliminan. Usa la opcion Anular para mantener trazabilidad.' });
 });
 
 module.exports = router;

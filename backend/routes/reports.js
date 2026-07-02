@@ -9,6 +9,9 @@ router.get('/summary', async (req, res) => {
       proformaStatuses,
       dailySales,
       topProducts,
+      receivables,
+      lowStock,
+      paymentBreakdown,
       recentAudit,
     ] = await Promise.all([
       db.query(`
@@ -46,6 +49,36 @@ router.get('/summary', async (req, res) => {
         LIMIT 10
       `),
       db.query(`
+        SELECT f.id_factura, f.numero_factura, f.fecha_emision, c.name AS cliente_nombre,
+               c.identification_number AS cliente_identificacion, f.total, f.saldo
+        FROM facturas f
+        JOIN clients c ON f.id_cliente = c.id
+        WHERE f.estado = 'EMITIDA' AND COALESCE(f.saldo, 0) > 0
+        ORDER BY f.fecha_emision DESC
+        LIMIT 20
+      `),
+      db.query(`
+        SELECT codigo, nombre, stock_actual, stock_minimo
+        FROM productos
+        WHERE activo = true AND COALESCE(stock_actual, 0) <= COALESCE(stock_minimo, 0)
+        ORDER BY stock_actual ASC, nombre ASC
+        LIMIT 20
+      `),
+      db.query(`
+        SELECT mp.nombre AS metodo_pago, COALESCE(SUM(fp.monto), 0) AS total
+        FROM factura_pagos fp
+        JOIN facturas f ON fp.id_factura = f.id_factura
+        LEFT JOIN metodos_pago mp ON fp.id_metodo_pago = mp.id_metodo
+        WHERE f.estado = 'EMITIDA'
+        GROUP BY mp.nombre
+        ORDER BY total DESC
+      `).catch((error) => {
+        if (error.code === '42P01') {
+          return { rows: [] };
+        }
+        throw error;
+      }),
+      db.query(`
         SELECT ae.*, u.username
         FROM auditoria_eventos ae
         LEFT JOIN usuarios u ON ae.id_usuario = u.id_usuario
@@ -64,6 +97,9 @@ router.get('/summary', async (req, res) => {
       proformas: proformaStatuses.rows,
       dailySales: dailySales.rows,
       topProducts: topProducts.rows,
+      receivables: receivables.rows,
+      lowStock: lowStock.rows,
+      paymentBreakdown: paymentBreakdown.rows,
       audit: recentAudit.rows,
     });
   } catch (error) {

@@ -50,9 +50,21 @@ router.get('/:id', async (req, res) => {
       ORDER BY fd.id_detalle ASC
     `, [req.params.id]);
 
+    const paymentsRes = await db.query(`
+      SELECT fp.*, mp.nombre AS metodo_pago_nombre, mp.codigo_sri
+      FROM factura_pagos fp
+      LEFT JOIN metodos_pago mp ON fp.id_metodo_pago = mp.id_metodo
+      WHERE fp.id_factura = $1
+      ORDER BY fp.id_pago ASC
+    `, [req.params.id]).catch((error) => {
+      if (error.code === '42P01') return { rows: [] };
+      throw error;
+    });
+
     res.json({
       invoice: invoiceRes.rows[0],
       details: detailsRes.rows,
+      payments: paymentsRes.rows,
     });
   } catch (error) {
     console.error('Error al obtener detalle de factura:', error);
@@ -61,9 +73,20 @@ router.get('/:id', async (req, res) => {
 });
 
 router.post('/', async (req, res) => {
-  const { id_cliente, id_usuario, id_metodo_pago, id_proforma, items, monto_pago, anticipo, observacion } = req.body;
+  const { id_cliente, id_usuario, id_metodo_pago, id_proforma, items, monto_pago, anticipo, observacion, payments } = req.body;
 
-  if (!id_cliente || !id_usuario || !id_metodo_pago || !Array.isArray(items) || items.length === 0) {
+  const normalizedPayments = Array.isArray(payments)
+    ? payments
+        .map((payment) => ({
+          id_metodo_pago: Number(payment.id_metodo_pago || payment.methodId || 0),
+          monto: Math.max(parseFloat(payment.monto ?? payment.amount ?? 0) || 0, 0),
+          referencia: String(payment.referencia || payment.reference || '').trim(),
+        }))
+        .filter((payment) => payment.id_metodo_pago && payment.monto > 0)
+    : [];
+  const primaryPaymentId = Number(id_metodo_pago || normalizedPayments[0]?.id_metodo_pago || 0);
+
+  if (!id_cliente || !id_usuario || !primaryPaymentId || !Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ error: 'Faltan datos requeridos para emitir la factura.' });
   }
 
@@ -198,7 +221,9 @@ router.post('/', async (req, res) => {
 
     const totalFactura = Math.max(subtotalSinImpuestos + valorIvaTotal - descuentoTotal, 0);
     const anticipoVal = Math.max(parseFloat(anticipo) || 0, 0);
-    const pagoVal = Math.max(parseFloat(monto_pago) || 0, 0);
+    const pagoVal = normalizedPayments.length > 0
+      ? normalizedPayments.reduce((sum, payment) => sum + payment.monto, 0)
+      : Math.max(parseFloat(monto_pago) || 0, 0);
     const totalPagado = anticipoVal + pagoVal;
     const cambio = Math.max(totalPagado - totalFactura, 0);
     const saldo = Math.max(totalFactura - totalPagado, 0);
@@ -223,7 +248,7 @@ router.post('/', async (req, res) => {
       descuentoTotal,
       valorIvaTotal,
       totalFactura,
-      id_metodo_pago,
+      primaryPaymentId,
       id_proforma || null,
       pagoVal,
       anticipoVal,
@@ -232,6 +257,21 @@ router.post('/', async (req, res) => {
       observacion || '',
     ]);
     const id_factura = invoiceInserted.rows[0].id_factura;
+
+    if (normalizedPayments.length === 0 && pagoVal > 0) {
+      normalizedPayments.push({
+        id_metodo_pago: primaryPaymentId,
+        monto: pagoVal,
+        referencia: '',
+      });
+    }
+
+    for (const payment of normalizedPayments) {
+      await client.query(`
+        INSERT INTO factura_pagos (id_factura, id_metodo_pago, monto, referencia)
+        VALUES ($1, $2, $3, $4)
+      `, [id_factura, payment.id_metodo_pago, payment.monto, payment.referencia]);
+    }
 
     for (const line of detailLines) {
       await client.query(`
@@ -293,10 +333,13 @@ router.post('/', async (req, res) => {
 
 router.put('/:id/cancel', async (req, res) => {
   const { id } = req.params;
-  const { id_usuario } = req.body;
+  const { id_usuario, reason } = req.body;
 
   if (!id_usuario) {
     return res.status(400).json({ error: 'El ID de usuario es requerido para anular.' });
+  }
+  if (!String(reason || '').trim()) {
+    return res.status(400).json({ error: 'El motivo de anulacion es obligatorio.' });
   }
 
   const client = await db.pool.connect();
@@ -329,17 +372,20 @@ router.put('/:id/cancel', async (req, res) => {
 
     const updRes = await client.query(`
       UPDATE facturas
-      SET estado = 'ANULADA'
+      SET estado = 'ANULADA',
+          motivo_anulacion = $2,
+          anulada_at = CURRENT_TIMESTAMP,
+          anulada_por = $3
       WHERE id_factura = $1
       RETURNING *
-    `, [id]);
+    `, [id, String(reason).trim(), id_usuario]);
 
     await writeAudit(client, {
       entity: 'facturas',
       entityId: id,
       action: 'ANULAR_FACTURA',
       userId: id_usuario,
-      detail: { numero_factura: factura.numero_factura },
+      detail: { numero_factura: factura.numero_factura, reason: String(reason).trim() },
     });
 
     await client.query('COMMIT');

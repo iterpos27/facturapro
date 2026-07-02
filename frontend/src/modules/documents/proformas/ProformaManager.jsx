@@ -68,7 +68,7 @@ const calculateLineAmounts = (item) => {
   };
 };
 
-export default function ProformaManager() {
+export default function ProformaManager({ onInvoiceProforma }) {
   const [proformas, setProformas] = useState([]);
   const [clients, setClients] = useState([]);
   const [products, setProducts] = useState([]);
@@ -80,6 +80,10 @@ export default function ProformaManager() {
   const [clientCedulaQuery, setClientCedulaQuery] = useState('');
   const [clientLookupQuery, setClientLookupQuery] = useState('');
   const [productId, setProductId] = useState('');
+  const [listQuery, setListQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState('ALL');
+  const [dateFromFilter, setDateFromFilter] = useState('');
+  const [dateToFilter, setDateToFilter] = useState('');
 
   // Cabecera
   const [clientId, setClientId] = useState('');
@@ -179,6 +183,22 @@ export default function ProformaManager() {
     const diff = Math.round((end - start) / 86400000);
     return Number.isFinite(diff) && diff > 0 ? diff : 0;
   }, [currentDate, validUntil]);
+
+  const filteredProformas = useMemo(() => {
+    const query = listQuery.trim().toLowerCase();
+    return proformas.filter((proforma) => {
+      const createdDate = proforma.createdAt ? String(proforma.createdAt).slice(0, 10) : '';
+      const matchesQuery = !query
+        || String(proforma.number || '').toLowerCase().includes(query)
+        || String(proforma.transactionNumber || '').toLowerCase().includes(query)
+        || String(proforma.clientName || '').toLowerCase().includes(query)
+        || String(proforma.clientIdentification || '').toLowerCase().includes(query);
+      const matchesStatus = statusFilter === 'ALL' || proforma.status === statusFilter;
+      const matchesFrom = !dateFromFilter || createdDate >= dateFromFilter;
+      const matchesTo = !dateToFilter || createdDate <= dateToFilter;
+      return matchesQuery && matchesStatus && matchesFrom && matchesTo;
+    });
+  }, [proformas, listQuery, statusFilter, dateFromFilter, dateToFilter]);
 
   const handleRemoveItemRow = (index) => {
     if (proformaItems.length === 1) {
@@ -549,6 +569,7 @@ export default function ProformaManager() {
       cancelButtonText: 'Cancelar',
       confirmButtonColor: '#e55353',
       cancelButtonColor: '#8a93a2',
+      inputValidator: (value) => (!String(value || '').trim() ? 'El motivo es obligatorio.' : undefined),
       customClass: {
         popup: 'swal-custom-popup',
         confirmButton: 'btn btn-danger',
@@ -575,6 +596,15 @@ export default function ProformaManager() {
     }
   };
 
+  const handleInvoiceProforma = (proforma) => {
+    localStorage.setItem('facturapro-pending-proforma', proforma.number);
+    if (onInvoiceProforma) {
+      onInvoiceProforma(proforma.number);
+      return;
+    }
+    showAlert(`Proforma ${proforma.number} lista para facturar.`, 'success');
+  };
+
   return (
     <div className="module-shell">
       <div className="view-header module-header-card d-flex align-items-center justify-content-between">
@@ -585,7 +615,7 @@ export default function ProformaManager() {
 
         <div className="d-flex align-items-center gap-3">
           <span className="count-badge-pill">
-            {proformas.length} {proformas.length === 1 ? 'registro' : 'registros'}
+            {filteredProformas.length} {filteredProformas.length === 1 ? 'registro' : 'registros'}
           </span>
           <button type="button" className="btn btn-secondary" onClick={() => (showForm ? resetForm() : openForm())}>
             {showForm ? 'Ver proformas' : '+ Nueva proforma'}
@@ -613,7 +643,7 @@ export default function ProformaManager() {
 
             <form onSubmit={saveProforma}>
               {/* Cabecera */}
-              <div className="row mb-3">
+              <div className="row mb-2">
                 <div className="col-md-3 mb-3">
                   <label className="form-label fw-bold">RUC / Cedula</label>
                   <div className="client-cedula-search">
@@ -652,7 +682,7 @@ export default function ProformaManager() {
                 </div>
               </div>
 
-              <div className="row mb-3">
+              <div className="row mb-2">
                 <div className="col-md-3 mb-3">
                   <label className="form-label fw-bold">Telefono</label>
                   <input className="form-control" value={getClientPhone(selectedClient)} readOnly disabled />
@@ -663,7 +693,7 @@ export default function ProformaManager() {
                 </div>
               </div>
 
-              <div className="row mb-3">
+              <div className="row mb-2">
                 <div className="col-md-6 mb-3">
                   <label className="form-label fw-bold">Dirección</label>
                   <input className="form-control" value={getClientAddress(selectedClient)} readOnly disabled />
@@ -674,7 +704,7 @@ export default function ProformaManager() {
                 </div>
               </div>
 
-              <div className="row mb-3">
+              <div className="row mb-2">
                 <div className="col-md-4 mb-3">
                   <label className="form-label fw-bold">Vendedor</label>
                   <input className="form-control" value={currentUser?.username || 'ALBERTO CHINGA'} readOnly disabled />
@@ -692,8 +722,8 @@ export default function ProformaManager() {
               </div>
 
               {/* Renglones / Detalles de la proforma */}
-              <div className="mb-4">
-                <div className="mb-3">
+              <div className="mb-3">
+                <div className="mb-2">
                   <label className="form-label fw-bold">Buscar producto *</label>
                   <ProductSearchInput
                     products={products}
@@ -708,7 +738,7 @@ export default function ProformaManager() {
                   <label className="form-label fw-bold mb-0">Detalles de Proforma *</label>
                 </div>
 
-                <div className="table-responsive border rounded bg-light p-2">
+                <div className="table-responsive border rounded bg-light p-1">
                   <table className="table table-sm table-bordered align-middle mb-0" style={{ minWidth: '700px' }}>
                     <thead className="table-secondary">
                       <tr>
@@ -815,7 +845,7 @@ export default function ProformaManager() {
                 </div>
 
                 <div className="col-md-5">
-                  <div className="border rounded p-3 bg-white shadow-sm">
+                  <div className="border rounded p-2 bg-white shadow-sm">
                     <div className="d-flex justify-content-between mb-2">
                       <span className="text-secondary">Subtotal:</span>
                       <span>${totals.subtotalSinImpuestos.toFixed(4)}</span>
@@ -858,7 +888,25 @@ export default function ProformaManager() {
         </div>
       ) : (
         <div className="client-data-panel">
-          {proformas.length === 0 ? (
+          <div className="row g-2 mb-3">
+            <div className="col-md-4">
+              <input className="form-control" value={listQuery} onChange={(event) => setListQuery(event.target.value)} placeholder="Buscar por numero, cliente o cedula" />
+            </div>
+            <div className="col-md-2">
+              <select className="form-control" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+                <option value="ALL">Todos</option>
+                <option value="BORRADOR">Borrador</option>
+                <option value="APROBADA">Aprobada</option>
+                <option value="FACTURADA">Facturada</option>
+                <option value="ANULADA">Anulada</option>
+              </select>
+            </div>
+            <div className="col-md-2"><input type="date" className="form-control" value={dateFromFilter} onChange={(event) => setDateFromFilter(event.target.value)} /></div>
+            <div className="col-md-2"><input type="date" className="form-control" value={dateToFilter} onChange={(event) => setDateToFilter(event.target.value)} /></div>
+            <div className="col-md-2"><button type="button" className="btn btn-secondary w-100" onClick={() => { setListQuery(''); setStatusFilter('ALL'); setDateFromFilter(''); setDateToFilter(''); }}>Limpiar</button></div>
+          </div>
+
+          {filteredProformas.length === 0 ? (
             <p className="module-empty-state">Aún no hay proformas. Crea la primera para preparar una venta antes de facturar.</p>
           ) : (
             <div>
@@ -876,7 +924,7 @@ export default function ProformaManager() {
                     </tr>
                   </thead>
                   <tbody>
-                    {proformas.map((proforma) => (
+                    {filteredProformas.map((proforma) => (
                       <tr key={proforma.id}>
                         <td style={{ fontWeight: 700 }}>{proforma.number}</td>
                         <td>
@@ -927,6 +975,15 @@ export default function ProformaManager() {
                                 Anular
                               </button>
                             )}
+                            {proforma.status === 'APROBADA' && (
+                              <button
+                                className="btn btn-success"
+                                style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}
+                                onClick={() => handleInvoiceProforma(proforma)}
+                              >
+                                Facturar
+                              </button>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -936,7 +993,7 @@ export default function ProformaManager() {
               </div>
 
               <div className="client-cards-container mobile-only">
-                {proformas.map((proforma) => (
+                {filteredProformas.map((proforma) => (
                   <div key={proforma.id} className="client-mobile-card">
                     <div className="client-card-header">
                       <span className="client-name">{proforma.number}</span>
@@ -959,6 +1016,7 @@ export default function ProformaManager() {
                       {proforma.status === 'BORRADOR' && <button className="btn btn-secondary" onClick={() => openEditForm(proforma)}>Editar</button>}
                       {proforma.status === 'BORRADOR' && <button className="btn btn-primary" onClick={() => handleApproveProforma(proforma.id, proforma.number)}>Aprobar</button>}
                       {['BORRADOR', 'APROBADA'].includes(proforma.status) && <button className="btn btn-danger" onClick={() => handleCancelProforma(proforma.id, proforma.number)}>Anular</button>}
+                      {proforma.status === 'APROBADA' && <button className="btn btn-success" onClick={() => handleInvoiceProforma(proforma)}>Facturar</button>}
                     </div>
                   </div>
                 ))}

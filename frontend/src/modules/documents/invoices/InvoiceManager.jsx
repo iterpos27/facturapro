@@ -12,6 +12,11 @@ const createEmptyItem = () => ({
   descuento_porcentaje: 0,
   iva_porcentaje: 0,
 });
+const createEmptyPayment = (methodId = '') => ({
+  id_metodo_pago: methodId,
+  monto: '',
+  referencia: '',
+});
 
 const getClientName = (client) => client?.name || client?.nombre || 'CONSUMIDOR FINAL';
 const getClientIdentification = (client) => client?.identification_number || client?.identificacion || '9999999999999';
@@ -45,6 +50,7 @@ export default function InvoiceManager({ onRedirectToCash }) {
   const [viewInvoice, setViewInvoice] = useState(null);
   const [selectedClient, setSelectedClient] = useState('');
   const [selectedPayment, setSelectedPayment] = useState('');
+  const [paymentRows, setPaymentRows] = useState([createEmptyPayment()]);
   const [invoiceItems, setInvoiceItems] = useState([createEmptyItem()]);
   const [productId, setProductId] = useState('');
   const [proformaNumber, setProformaNumber] = useState('');
@@ -52,6 +58,10 @@ export default function InvoiceManager({ onRedirectToCash }) {
   const [notes, setNotes] = useState('');
   const [montoPago, setMontoPago] = useState('');
   const [anticipo, setAnticipo] = useState('');
+  const [listQuery, setListQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState('ALL');
+  const [dateFromFilter, setDateFromFilter] = useState('');
+  const [dateToFilter, setDateToFilter] = useState('');
   const [currentUser, setCurrentUser] = useState(null);
 
   useEffect(() => {
@@ -62,6 +72,15 @@ export default function InvoiceManager({ onRedirectToCash }) {
       setCurrentUser(JSON.parse(userStr));
     }
   }, []);
+
+  useEffect(() => {
+    if (!currentUser) return;
+    const pendingProforma = localStorage.getItem('facturapro-pending-proforma');
+    if (!pendingProforma) return;
+    localStorage.removeItem('facturapro-pending-proforma');
+    setProformaNumber(pendingProforma);
+    handleOpenNewInvoice();
+  }, [currentUser]);
 
   const fetchInvoices = async () => {
     setLoading(true);
@@ -99,7 +118,11 @@ export default function InvoiceManager({ onRedirectToCash }) {
       if (pmRes.ok) {
         const data = await pmRes.json();
         setPaymentMethods(data);
-        if (data.length > 0) setSelectedPayment(String(data[0].id_metodo));
+        if (data.length > 0) {
+          const defaultPayment = String(data[0].id_metodo);
+          setSelectedPayment(defaultPayment);
+          setPaymentRows([createEmptyPayment(defaultPayment)]);
+        }
       }
     } catch (error) {
       console.error(error);
@@ -158,13 +181,30 @@ export default function InvoiceManager({ onRedirectToCash }) {
   };
 
   const totals = calculateTotals();
-  const paidAmount = (parseFloat(montoPago) || 0) + (parseFloat(anticipo) || 0);
+  const paymentRowsTotal = paymentRows.reduce((sum, payment) => sum + (parseFloat(payment.monto) || 0), 0);
+  const paidAmount = paymentRowsTotal + (parseFloat(anticipo) || 0);
   const changeAmount = Math.max(paidAmount - totals.total, 0);
   const balanceAmount = Math.max(totals.total - paidAmount, 0);
+
+  const filteredInvoices = useMemo(() => {
+    const query = listQuery.trim().toLowerCase();
+    return invoices.filter((invoice) => {
+      const issuedDate = invoice.fecha_emision ? String(invoice.fecha_emision).slice(0, 10) : '';
+      const matchesQuery = !query
+        || String(invoice.numero_factura || '').toLowerCase().includes(query)
+        || String(invoice.cliente_nombre || '').toLowerCase().includes(query)
+        || String(invoice.cliente_identificacion || '').toLowerCase().includes(query);
+      const matchesStatus = statusFilter === 'ALL' || invoice.estado === statusFilter;
+      const matchesFrom = !dateFromFilter || issuedDate >= dateFromFilter;
+      const matchesTo = !dateToFilter || issuedDate <= dateToFilter;
+      return matchesQuery && matchesStatus && matchesFrom && matchesTo;
+    });
+  }, [invoices, listQuery, statusFilter, dateFromFilter, dateToFilter]);
 
   const handleCancel = () => {
     if (clients.length > 0) setSelectedClient(String(clients[0].id));
     if (paymentMethods.length > 0) setSelectedPayment(String(paymentMethods[0].id_metodo));
+    if (paymentMethods.length > 0) setPaymentRows([createEmptyPayment(String(paymentMethods[0].id_metodo))]);
     setInvoiceItems([createEmptyItem()]);
     setProductId('');
     setProformaNumber('');
@@ -256,6 +296,7 @@ export default function InvoiceManager({ onRedirectToCash }) {
         iva_porcentaje: item.taxPercent || 0,
       })));
       setMontoPago('');
+      setPaymentRows([createEmptyPayment(selectedPayment)]);
       setAnticipo('');
       showAlert(`Proforma ${data.number} cargada.`, 'success');
     } catch (error) {
@@ -269,7 +310,22 @@ export default function InvoiceManager({ onRedirectToCash }) {
     setInvoiceItems([createEmptyItem()]);
     setNotes('');
     setMontoPago('');
+    setPaymentRows([createEmptyPayment(selectedPayment)]);
     setAnticipo('');
+  };
+
+  const handlePaymentChange = (index, field, value) => {
+    setPaymentRows((current) => current.map((payment, paymentIndex) => (
+      paymentIndex === index ? { ...payment, [field]: value } : payment
+    )));
+  };
+
+  const handleAddPayment = () => {
+    setPaymentRows((current) => [...current, createEmptyPayment(selectedPayment)]);
+  };
+
+  const handleRemovePayment = (index) => {
+    setPaymentRows((current) => current.length === 1 ? [createEmptyPayment(selectedPayment)] : current.filter((_, paymentIndex) => paymentIndex !== index));
   };
 
   const handleSubmit = async (e) => {
@@ -287,10 +343,18 @@ export default function InvoiceManager({ onRedirectToCash }) {
       return;
     }
 
+    const validPayments = paymentRows
+      .map((payment) => ({
+        id_metodo_pago: parseInt(payment.id_metodo_pago || selectedPayment, 10),
+        monto: parseFloat(payment.monto) || 0,
+        referencia: payment.referencia || '',
+      }))
+      .filter((payment) => payment.id_metodo_pago && payment.monto > 0);
+
     const payload = {
       id_cliente: parseInt(selectedClient, 10),
       id_usuario: currentUser.id_usuario,
-      id_metodo_pago: parseInt(selectedPayment, 10),
+      id_metodo_pago: validPayments[0]?.id_metodo_pago || parseInt(selectedPayment, 10),
       id_proforma: sourceProforma?.id || null,
       items: validItems.map((item) => ({
         id_producto: parseInt(item.id_producto, 10),
@@ -299,12 +363,37 @@ export default function InvoiceManager({ onRedirectToCash }) {
         descuento: parseFloat(item.descuento) || 0,
         descuento_porcentaje: parseFloat(item.descuento_porcentaje) || 0,
       })),
-      monto_pago: parseFloat(montoPago) || 0,
+      monto_pago: validPayments.reduce((sum, payment) => sum + payment.monto, 0),
       anticipo: parseFloat(anticipo) || 0,
       observacion: notes,
+      payments: validPayments,
     };
 
     try {
+      const confirmResult = await Swal.fire({
+        title: 'Confirmar emision',
+        html: `
+          <div style="text-align:left">
+            <p><strong>Total:</strong> $${totals.total.toFixed(2)}</p>
+            <p><strong>Pagado + anticipo:</strong> $${paidAmount.toFixed(2)}</p>
+            <p><strong>Saldo:</strong> $${balanceAmount.toFixed(2)}</p>
+            <p><strong>Cambio:</strong> $${changeAmount.toFixed(2)}</p>
+          </div>
+        `,
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: 'Emitir factura',
+        cancelButtonText: 'Revisar',
+        confirmButtonColor: '#198754',
+        cancelButtonColor: '#8a93a2',
+        customClass: {
+          popup: 'swal-custom-popup',
+          confirmButton: 'btn btn-primary',
+          cancelButton: 'btn btn-secondary',
+        },
+      });
+      if (!confirmResult.isConfirmed) return;
+
       const response = await apiFetch('/api/invoices', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -340,11 +429,30 @@ export default function InvoiceManager({ onRedirectToCash }) {
 
     if (!result.isConfirmed) return;
 
+    const reasonResult = await Swal.fire({
+      title: 'Motivo de anulacion',
+      input: 'text',
+      inputPlaceholder: 'Ej: Error en datos del cliente',
+      showCancelButton: true,
+      confirmButtonText: 'Anular',
+      cancelButtonText: 'Cancelar',
+      confirmButtonColor: '#e55353',
+      cancelButtonColor: '#8a93a2',
+      inputValidator: (value) => (!String(value || '').trim() ? 'El motivo es obligatorio.' : undefined),
+      customClass: {
+        popup: 'swal-custom-popup',
+        confirmButton: 'btn btn-danger',
+        cancelButton: 'btn btn-secondary',
+      },
+    });
+
+    if (!reasonResult.isConfirmed) return;
+
     try {
       const response = await apiFetch(`/api/invoices/${id}/cancel`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id_usuario: currentUser.id_usuario }),
+        body: JSON.stringify({ id_usuario: currentUser.id_usuario, reason: reasonResult.value }),
       });
       const resultData = await response.json();
       if (!response.ok) throw new Error(resultData.error || 'No se pudo anular la factura.');
@@ -413,7 +521,7 @@ export default function InvoiceManager({ onRedirectToCash }) {
         </div>
         <div className="d-flex align-items-center gap-3">
           <span className="count-badge-pill">
-            {invoices.length} {invoices.length === 1 ? 'registro' : 'registros'}
+            {filteredInvoices.length} {filteredInvoices.length === 1 ? 'registro' : 'registros'}
           </span>
           <button className="btn btn-secondary" onClick={showForm ? handleCancel : handleOpenNewInvoice}>
             {showForm ? 'Ver facturas' : '+ Emitir factura'}
@@ -423,9 +531,25 @@ export default function InvoiceManager({ onRedirectToCash }) {
 
       {!showForm && (
         <div className="client-data-panel">
+          <div className="row g-2 mb-3">
+            <div className="col-md-4">
+              <input className="form-control" value={listQuery} onChange={(event) => setListQuery(event.target.value)} placeholder="Buscar por factura, cliente o cedula" />
+            </div>
+            <div className="col-md-2">
+              <select className="form-control" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+                <option value="ALL">Todos</option>
+                <option value="EMITIDA">Emitida</option>
+                <option value="ANULADA">Anulada</option>
+              </select>
+            </div>
+            <div className="col-md-2"><input type="date" className="form-control" value={dateFromFilter} onChange={(event) => setDateFromFilter(event.target.value)} /></div>
+            <div className="col-md-2"><input type="date" className="form-control" value={dateToFilter} onChange={(event) => setDateToFilter(event.target.value)} /></div>
+            <div className="col-md-2"><button type="button" className="btn btn-secondary w-100" onClick={() => { setListQuery(''); setStatusFilter('ALL'); setDateFromFilter(''); setDateToFilter(''); }}>Limpiar</button></div>
+          </div>
+
           {loading ? (
             <p className="module-empty-state">Cargando comprobantes...</p>
-          ) : invoices.length === 0 ? (
+          ) : filteredInvoices.length === 0 ? (
             <p className="module-empty-state">No se han registrado facturas emitidas.</p>
           ) : (
             <div className="table-responsive desktop-only">
@@ -442,7 +566,7 @@ export default function InvoiceManager({ onRedirectToCash }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {invoices.map((inv) => {
+                  {filteredInvoices.map((inv) => {
                     const isAnulada = inv.estado === 'ANULADA';
                     return (
                       <tr key={inv.id_factura}>
@@ -489,7 +613,7 @@ export default function InvoiceManager({ onRedirectToCash }) {
             <div className="invoice-inline-divider"></div>
 
             <form onSubmit={handleSubmit}>
-              <div className="row mb-3">
+              <div className="row mb-2">
                 <div className="col-md-3 mb-3">
                   <label className="form-label fw-bold">Fecha</label>
                   <input className="form-control" value={currentDate} readOnly disabled />
@@ -522,7 +646,7 @@ export default function InvoiceManager({ onRedirectToCash }) {
                 </div>
               </div>
 
-              <div className="row mb-3">
+              <div className="row mb-2">
                 <div className="col-md-3 mb-3">
                   <label className="form-label fw-bold">RUC / Cedula</label>
                   <input className="form-control" value={getClientIdentification(selectedClientData)} readOnly disabled />
@@ -546,7 +670,7 @@ export default function InvoiceManager({ onRedirectToCash }) {
                 </div>
               </div>
 
-              <div className="row mb-3">
+              <div className="row mb-2">
                 <div className="col-md-6 mb-3">
                   <label className="form-label fw-bold">Direccion</label>
                   <input className="form-control" value={getClientAddress(selectedClientData)} readOnly disabled />
@@ -561,17 +685,17 @@ export default function InvoiceManager({ onRedirectToCash }) {
                 </div>
               </div>
 
-              <div className="mb-3">
+              <div className="mb-2">
                 <label className="form-label fw-bold">Observacion</label>
                 <textarea className="form-control" value={notes} onChange={(event) => setNotes(event.target.value)} style={{ minHeight: '42px' }} />
               </div>
 
-              <div className="mb-3">
+              <div className="mb-2">
                 <label className="form-label fw-bold">Busqueda de Producto</label>
                 <ProductSearchInput products={products} value={productId} onChange={handleProductSearchSelect} placeholder="Buscar producto por codigo, SKU o nombre" clearOnSelect />
               </div>
 
-              <div className="table-responsive border rounded bg-light p-2 mb-4">
+              <div className="table-responsive border rounded bg-light p-1 mb-3">
                 <table className="table table-sm table-bordered align-middle mb-0" style={{ minWidth: '900px' }}>
                   <thead className="table-secondary">
                     <tr>
@@ -631,28 +755,48 @@ export default function InvoiceManager({ onRedirectToCash }) {
 
               <div className="row">
                 <div className="col-md-7 mb-3">
-                  <div className="bg-light p-3 rounded" style={{ fontSize: '0.85rem' }}>
-                    <h6 className="fw-bold">Nota de Facturacion</h6>
-                    <p className="text-secondary mb-0">
-                      La factura normal genera su numero al emitir. Si cargas una proforma, sus datos pasan al comprobante y la proforma queda marcada como facturada.
-                    </p>
+                  <div className="bg-light p-2 rounded" style={{ fontSize: '0.82rem' }}>
+                    La factura descuenta inventario. Si viene de proforma, la proforma queda facturada.
                   </div>
                 </div>
                 <div className="col-md-5">
-                  <div className="border rounded p-3 bg-white shadow-sm">
+                  <div className="border rounded p-2 bg-white shadow-sm">
                     <div className="d-flex justify-content-between mb-2"><span className="text-secondary">Subtotal:</span><span>${totals.subtotalSinImpuestos.toFixed(4)}</span></div>
                     <div className="d-flex justify-content-between mb-2"><span className="text-secondary">Descuento:</span><span>${totals.descuentoTotal.toFixed(4)}</span></div>
                     <div className="d-flex justify-content-between mb-2"><span className="text-secondary">Subtotal IVA 0%:</span><span>${totals.subtotalIvaCero.toFixed(2)}</span></div>
                     <div className="d-flex justify-content-between mb-2"><span className="text-secondary">Subtotal Neto:</span><span>${totals.subtotalConIva.toFixed(4)}</span></div>
                     <div className="d-flex justify-content-between mb-2"><span className="text-secondary">IVA:</span><span>${totals.valorIvaTotal.toFixed(4)}</span></div>
                     <div className="row g-2 mt-2">
-                      <div className="col-6">
+                      <div className="col-12">
                         <label className="form-label fw-bold mb-1">Anticipo</label>
                         <input type="number" step="0.01" min="0" className="form-control text-end" value={anticipo} onChange={(event) => setAnticipo(event.target.value)} placeholder="0.00" />
                       </div>
-                      <div className="col-6">
-                        <label className="form-label fw-bold mb-1">Pago</label>
-                        <input type="number" step="0.01" min="0" className="form-control text-end" value={montoPago} onChange={(event) => setMontoPago(event.target.value)} placeholder="0.00" />
+                      <div className="col-12">
+                        <div className="d-flex align-items-center justify-content-between mb-1">
+                          <label className="form-label fw-bold mb-0">Pagos</label>
+                          <button type="button" className="btn btn-secondary btn-sm" onClick={handleAddPayment}>+ Pago</button>
+                        </div>
+                        {paymentRows.map((payment, index) => (
+                          <div className="row g-1 mb-1" key={`payment-${index}`}>
+                            <div className="col-5">
+                              <select className="form-control form-control-sm" value={payment.id_metodo_pago} onChange={(event) => handlePaymentChange(index, 'id_metodo_pago', event.target.value)}>
+                                <option value="">Metodo</option>
+                                {paymentMethods.map((pm) => (
+                                  <option key={pm.id_metodo} value={pm.id_metodo}>{pm.nombre}</option>
+                                ))}
+                              </select>
+                            </div>
+                            <div className="col-3">
+                              <input type="number" step="0.01" min="0" className="form-control form-control-sm text-end" value={payment.monto} onChange={(event) => handlePaymentChange(index, 'monto', event.target.value)} placeholder="0.00" />
+                            </div>
+                            <div className="col-3">
+                              <input className="form-control form-control-sm" value={payment.referencia} onChange={(event) => handlePaymentChange(index, 'referencia', event.target.value)} placeholder="Ref." />
+                            </div>
+                            <div className="col-1 text-end">
+                              <button type="button" className="btn btn-outline-danger btn-sm border-0" onClick={() => handleRemovePayment(index)}>X</button>
+                            </div>
+                          </div>
+                        ))}
                       </div>
                     </div>
                     <div className="d-flex justify-content-between mt-3 mb-2"><span className="text-secondary">Cambio:</span><span className="text-success fw-bold">${changeAmount.toFixed(2)}</span></div>
@@ -739,7 +883,16 @@ export default function InvoiceManager({ onRedirectToCash }) {
             <div className="row small">
               <div className="col-7">
                 <div><strong>FORMA DE PAGO:</strong></div>
-                <div>{viewInvoice.invoice.metodo_pago_nombre || 'Efectivo'}</div>
+                {(viewInvoice.payments || []).length > 0 ? (
+                  viewInvoice.payments.map((payment) => (
+                    <div key={payment.id_pago}>
+                      {payment.metodo_pago_nombre || 'Pago'}: ${parseFloat(payment.monto || 0).toFixed(2)}
+                      {payment.referencia ? ` (${payment.referencia})` : ''}
+                    </div>
+                  ))
+                ) : (
+                  <div>{viewInvoice.invoice.metodo_pago_nombre || 'Efectivo'}</div>
+                )}
                 <div><strong>ANTICIPO:</strong> ${parseFloat(viewInvoice.invoice.anticipo || 0).toFixed(2)}</div>
                 <div><strong>PAGO:</strong> ${parseFloat(viewInvoice.invoice.monto_pago || 0).toFixed(2)}</div>
                 <div><strong>CAMBIO:</strong> ${parseFloat(viewInvoice.invoice.cambio || 0).toFixed(2)}</div>

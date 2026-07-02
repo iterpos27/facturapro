@@ -255,7 +255,7 @@ function App() {
       case 'cash':
         return <CashRegisterManager />;
       case 'proformas':
-        return <ProformaManager />;
+        return <ProformaManager onInvoiceProforma={() => handleNavigate('invoices')} />;
       case 'invoices':
         return <InvoiceManager onRedirectToCash={() => handleNavigate('cash')} />;
       case 'reports':
