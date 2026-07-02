@@ -15,6 +15,9 @@
     "db:migrate:invoice-proformas": "node migrations/migrate_phase6_invoice_proformas.js",
     "db:migrate:commercial-hardening": "node migrations/migrate_phase7_commercial_hardening.js",
     "db:migrate:professional-commercial": "node migrations/migrate_phase8_professional_commercial.js",
+    "db:migrate:purchases": "node migrations/migrate_phase9_purchases.js",
+    "db:migrate:receivables": "node migrations/migrate_phase9_receivables.js",
+    "db:migrate:complementary": "node migrations/migrate_phase9_complementary.js",
     "db:drop": "node migrations/migrate_drop.js",
     "db:productos": "node migrations/create_productos_table.js"
   },

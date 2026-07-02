@@ -589,7 +589,14 @@ export default function CreditNotesManager() {
               </div>
             </div>
 
-            <div className="d-flex justify-content-end mt-4 pt-3 border-top">
+            <div className="d-flex justify-content-end gap-2 mt-4 pt-3 border-top">
+              <button
+                type="button"
+                className="btn btn-outline-primary"
+                onClick={() => window.print()}
+              >
+                Imprimir
+              </button>
               <button
                 type="button"
                 className="btn btn-secondary"

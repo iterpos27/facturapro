@@ -119,12 +119,14 @@ router.post('/', async (req, res) => {
         parseFloat(itemIva || 0),
       ]);
 
-      // Incrementar stock en productos
+      // Incrementar stock y actualizar el ultimo costo de compra del producto.
       await client.query(`
         UPDATE productos
-        SET stock_actual = stock_actual + $1
+        SET stock_actual = stock_actual + $1,
+            precio_compra = $3,
+            updated_at = CURRENT_TIMESTAMP
         WHERE id_producto = $2
-      `, [parseFloat(cantidad), id_producto]);
+      `, [parseFloat(cantidad), id_producto, parseFloat(costo_unitario)]);
 
       // Registrar movimiento de inventario
       await client.query(`
