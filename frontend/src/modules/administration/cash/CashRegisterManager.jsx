@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import Swal from 'sweetalert2';
 import { apiFetch } from '../../../lib/api';
 
+const money = (value) => `$${Number(value || 0).toFixed(2)}`;
+
 export default function CashRegisterManager() {
   const [boxes, setBoxes] = useState([]);
   const [paymentMethods, setPaymentMethods] = useState([]);
@@ -92,6 +94,10 @@ export default function CashRegisterManager() {
       title: message
     });
   };
+
+  const cashSummary = activeSession?.summary || {};
+  const expectedCash = Number(activeSession?.monto_apertura || 0) + Number(cashSummary.esperado_caja || 0);
+  const closeDifference = montoCierre === '' ? null : Number(montoCierre || 0) - expectedCash;
 
   const handleOpenRegister = async (e) => {
     e.preventDefault();
@@ -255,6 +261,35 @@ export default function CashRegisterManager() {
                       <h4 className="text-primary fw-bold">${parseFloat(activeSession.monto_apertura).toFixed(2)}</h4>
                     </div>
                   </div>
+                </div>
+
+                <div className="row g-2 mb-3">
+                  <div className="col-md-4">
+                    <div className="border rounded p-2 bg-white">
+                      <span className="text-muted small d-block">Facturado</span>
+                      <strong>{money(cashSummary.total_facturado)}</strong>
+                    </div>
+                  </div>
+                  <div className="col-md-4">
+                    <div className="border rounded p-2 bg-white">
+                      <span className="text-muted small d-block">Cobros CxC</span>
+                      <strong>{money(cashSummary.cobros_cxc)}</strong>
+                    </div>
+                  </div>
+                  <div className="col-md-4">
+                    <div className="border rounded p-2 bg-white">
+                      <span className="text-muted small d-block">Esperado</span>
+                      <strong>{money(expectedCash)}</strong>
+                    </div>
+                  </div>
+                  {closeDifference !== null && (
+                    <div className="col-md-12">
+                      <div className={`border rounded p-2 ${Math.abs(closeDifference) < 0.01 ? 'bg-light' : 'bg-warning-subtle'}`}>
+                        <span className="text-muted small d-block">Diferencia contra conteo</span>
+                        <strong>{money(closeDifference)}</strong>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <form onSubmit={handleCloseRegister}>

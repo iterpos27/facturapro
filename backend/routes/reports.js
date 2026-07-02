@@ -13,6 +13,10 @@ router.get('/summary', async (req, res) => {
       lowStock,
       paymentBreakdown,
       recentAudit,
+      purchases,
+      creditNotes,
+      withholdings,
+      approximateProfit,
     ] = await Promise.all([
       db.query(`
         SELECT
@@ -90,6 +94,38 @@ router.get('/summary', async (req, res) => {
         }
         throw error;
       }),
+      db.query(`
+        SELECT COUNT(*) AS compras, COALESCE(SUM(total), 0) AS total_compras
+        FROM compras
+        WHERE estado = 'REGISTRADA'
+      `).catch((error) => {
+        if (error.code === '42P01') return { rows: [{ compras: 0, total_compras: 0 }] };
+        throw error;
+      }),
+      db.query(`
+        SELECT COUNT(*) AS notas_credito, COALESCE(SUM(total), 0) AS total_notas_credito
+        FROM notas_credito
+        WHERE estado = 'EMITIDA'
+      `).catch((error) => {
+        if (error.code === '42P01') return { rows: [{ notas_credito: 0, total_notas_credito: 0 }] };
+        throw error;
+      }),
+      db.query(`
+        SELECT COUNT(*) AS retenciones, COALESCE(SUM(rd.valor_retenido), 0) AS total_retenido
+        FROM retenciones r
+        LEFT JOIN retencion_detalles rd ON r.id_retencion = rd.id_retencion
+        WHERE r.estado = 'EMITIDA'
+      `).catch((error) => {
+        if (error.code === '42P01') return { rows: [{ retenciones: 0, total_retenido: 0 }] };
+        throw error;
+      }),
+      db.query(`
+        SELECT COALESCE(SUM((fd.precio_unitario - COALESCE(p.precio_compra, 0)) * fd.cantidad), 0) AS utilidad_estimada
+        FROM factura_detalles fd
+        JOIN facturas f ON fd.id_factura = f.id_factura
+        JOIN productos p ON fd.id_producto = p.id_producto
+        WHERE f.estado = 'EMITIDA'
+      `),
     ]);
 
     res.json({
@@ -101,6 +137,10 @@ router.get('/summary', async (req, res) => {
       lowStock: lowStock.rows,
       paymentBreakdown: paymentBreakdown.rows,
       audit: recentAudit.rows,
+      purchases: purchases.rows[0],
+      creditNotes: creditNotes.rows[0],
+      withholdings: withholdings.rows[0],
+      approximateProfit: approximateProfit.rows[0],
     });
   } catch (error) {
     console.error('Error al consultar reportes:', error);

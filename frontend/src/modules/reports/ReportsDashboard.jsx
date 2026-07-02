@@ -26,6 +26,10 @@ export default function ReportsDashboard() {
   }, []);
 
   const invoices = summary?.invoices || {};
+  const purchases = summary?.purchases || {};
+  const creditNotes = summary?.creditNotes || {};
+  const withholdings = summary?.withholdings || {};
+  const profit = summary?.approximateProfit || {};
 
   return (
     <div className="module-shell">
@@ -48,6 +52,13 @@ export default function ReportsDashboard() {
             <div className="col-md-3"><div className="card dashboard-tile dashboard-tile-info"><h5>Facturas emitidas</h5><p>{invoices.facturas_emitidas || 0}</p></div></div>
             <div className="col-md-3"><div className="card dashboard-tile dashboard-tile-warning"><h5>Saldo pendiente</h5><p>{money(invoices.saldo_pendiente)}</p></div></div>
             <div className="col-md-3"><div className="card dashboard-tile dashboard-tile-primary"><h5>Anuladas</h5><p>{invoices.facturas_anuladas || 0}</p></div></div>
+          </div>
+
+          <div className="row g-3 mb-3">
+            <div className="col-md-3"><div className="card dashboard-tile dashboard-tile-info"><h5>Compras</h5><p>{money(purchases.total_compras)}</p></div></div>
+            <div className="col-md-3"><div className="card dashboard-tile dashboard-tile-warning"><h5>Notas credito</h5><p>{money(creditNotes.total_notas_credito)}</p></div></div>
+            <div className="col-md-3"><div className="card dashboard-tile dashboard-tile-primary"><h5>Retenido</h5><p>{money(withholdings.total_retenido)}</p></div></div>
+            <div className="col-md-3"><div className="card dashboard-tile dashboard-tile-success"><h5>Utilidad est.</h5><p>{money(profit.utilidad_estimada)}</p></div></div>
           </div>
 
           <div className="row g-3">

@@ -45,6 +45,7 @@ import CashRegisterManager from './modules/administration/cash/CashRegisterManag
 import CompanyManager from './modules/administration/company/CompanyManager';
 import BranchManager from './modules/administration/branches/BranchManager';
 import UserManager from './modules/administration/users/UserManager';
+import AuditManager from './modules/administration/audit/AuditManager';
 import ReportsDashboard from './modules/reports/ReportsDashboard';
 import { apiFetch, AUTH_LOGOUT_EVENT, clearSession } from './lib/api';
 
@@ -74,6 +75,7 @@ const TAB_SECTION_MAP = {
   cash: 'configuracion',
   company: 'configuracion',
   branches: 'configuracion',
+  audit: 'configuracion',
 };
 
 // Mapa de accesos y permisos por Rol de Usuario
@@ -95,6 +97,7 @@ const ROLE_PERMISSIONS = {
     company: true,
     branches: true,
     users: true,
+    audit: true,
   },
   VENDEDOR: {
     clients: true,
@@ -113,6 +116,7 @@ const ROLE_PERMISSIONS = {
     company: false,
     branches: false,
     users: false,
+    audit: false,
   },
   CONTADOR: {
     clients: true,
@@ -131,6 +135,7 @@ const ROLE_PERMISSIONS = {
     company: false,
     branches: false,
     users: false,
+    audit: true,
   },
 };
 
@@ -358,6 +363,8 @@ function App() {
         return <BranchManager />;
       case 'users':
         return <UserManager />;
+      case 'audit':
+        return <AuditManager />;
       case 'reports':
         return <ReportsDashboard />;
       default:
@@ -520,7 +527,7 @@ function App() {
             </>,
           )}
 
-          {(permissions.cash || permissions.company || permissions.branches) && renderSection(
+          {(permissions.cash || permissions.company || permissions.branches || permissions.audit) && renderSection(
             'configuracion',
             'Configuración / Caja',
             <>
@@ -542,6 +549,13 @@ function App() {
                 <CNavItem>
                   <CNavLink className="app-nav-link" active={activeTab === 'branches'} onClick={() => handleNavigate('branches')} style={{ cursor: 'pointer' }}>
                     <CIcon icon={cilHome} className="nav-icon" /> Sucursales
+                  </CNavLink>
+                </CNavItem>
+              )}
+              {permissions.audit && (
+                <CNavItem>
+                  <CNavLink className="app-nav-link" active={activeTab === 'audit'} onClick={() => handleNavigate('audit')} style={{ cursor: 'pointer' }}>
+                    <CIcon icon={cilList} className="nav-icon" /> Auditoria
                   </CNavLink>
                 </CNavItem>
               )}

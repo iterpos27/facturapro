@@ -27,7 +27,7 @@ app.get('/health', (req, res) => {
 });
 
 // Registrar rutas
-const { router: authRoutes, authenticateToken } = require('./routes/auth');
+const { router: authRoutes, authenticateToken, authorizeRoles } = require('./routes/auth');
 const clientRoutes = require('./routes/clients');
 const productRoutes = require('./routes/products');
 const categoryRoutes = require('./routes/categories');
@@ -44,12 +44,13 @@ const reportRoutes = require('./routes/reports');
 const purchaseRoutes = require('./routes/purchases');
 const creditNotesRoutes = require('./routes/credit_notes');
 const withholdingsRoutes = require('./routes/withholdings');
+const auditRoutes = require('./routes/audit');
 
 app.use('/api/auth', authRoutes);
 app.use('/api/clients', authenticateToken, clientRoutes);
 app.use('/api/products', authenticateToken, productRoutes);
 app.use('/api/categories', authenticateToken, categoryRoutes);
-app.use('/api/users', authenticateToken, userRoutes);
+app.use('/api/users', authenticateToken, authorizeRoles('ADMINISTRADOR'), userRoutes);
 app.use('/api/company', authenticateToken, companyRoutes);
 app.use('/api/branches', authenticateToken, branchRoutes);
 app.use('/api/suppliers', authenticateToken, supplierRoutes);
@@ -57,11 +58,12 @@ app.use('/api/inventory', authenticateToken, inventoryRoutes);
 app.use('/api/cash-registers', authenticateToken, cashRegisterRoutes);
 app.use('/api/invoices', authenticateToken, invoiceRoutes);
 app.use('/api/proformas', authenticateToken, proformaRoutes);
-app.use('/api/sequentials', authenticateToken, sequentialRoutes);
-app.use('/api/reports', authenticateToken, reportRoutes);
-app.use('/api/purchases', authenticateToken, purchaseRoutes);
-app.use('/api/credit-notes', authenticateToken, creditNotesRoutes);
-app.use('/api/withholdings', authenticateToken, withholdingsRoutes);
+app.use('/api/sequentials', authenticateToken, authorizeRoles('ADMINISTRADOR'), sequentialRoutes);
+app.use('/api/reports', authenticateToken, authorizeRoles('ADMINISTRADOR', 'CONTADOR'), reportRoutes);
+app.use('/api/audit', authenticateToken, authorizeRoles('ADMINISTRADOR', 'CONTADOR'), auditRoutes);
+app.use('/api/purchases', authenticateToken, authorizeRoles('ADMINISTRADOR', 'CONTADOR'), purchaseRoutes);
+app.use('/api/credit-notes', authenticateToken, authorizeRoles('ADMINISTRADOR', 'CONTADOR'), creditNotesRoutes);
+app.use('/api/withholdings', authenticateToken, authorizeRoles('ADMINISTRADOR', 'CONTADOR'), withholdingsRoutes);
 
 
 // Manejo de errores global

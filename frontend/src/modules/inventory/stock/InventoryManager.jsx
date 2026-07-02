@@ -12,6 +12,9 @@ export default function InventoryManager() {
   const [reasonFilter, setReasonFilter] = useState('ALL');
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [kardexProductId, setKardexProductId] = useState('');
+  const [kardexData, setKardexData] = useState(null);
+  const [loadingKardex, setLoadingKardex] = useState(false);
 
   // Campos del formulario
   const [idProducto, setIdProducto] = useState('');
@@ -76,6 +79,27 @@ export default function InventoryManager() {
       }
     } catch (error) {
       console.error(error);
+    }
+  };
+
+  const fetchKardex = async (productId) => {
+    setKardexProductId(productId);
+    if (!productId) {
+      setKardexData(null);
+      return;
+    }
+
+    setLoadingKardex(true);
+    try {
+      const response = await apiFetch(`/api/inventory/kardex/${productId}`);
+      if (!response.ok) throw new Error('No se pudo consultar el kardex.');
+      setKardexData(await response.json());
+    } catch (error) {
+      console.error(error);
+      showToast(error.message, 'error');
+      setKardexData(null);
+    } finally {
+      setLoadingKardex(false);
     }
   };
 
@@ -181,6 +205,64 @@ export default function InventoryManager() {
       </div>
 
       <div className="client-data-panel">
+        <div className="mb-3 p-3 border rounded bg-light">
+          <div className="row g-2 align-items-end">
+            <div className="col-md-8">
+              <label className="form-label fw-semibold">Kardex por producto</label>
+              <ProductSearchInput
+                products={products}
+                value={kardexProductId}
+                onChange={fetchKardex}
+                placeholder="Buscar producto para ver entradas, salidas y saldo"
+              />
+            </div>
+            <div className="col-md-4 d-flex gap-2">
+              <button type="button" className="btn btn-secondary" onClick={() => window.print()} disabled={!kardexData}>
+                Imprimir Kardex
+              </button>
+              <button type="button" className="btn btn-outline-secondary" onClick={() => fetchKardex('')}>
+                Limpiar
+              </button>
+            </div>
+          </div>
+
+          {loadingKardex && <p className="small text-muted mb-0 mt-2">Consultando kardex...</p>}
+          {kardexData && (
+            <div className="mt-3">
+              <div className="d-flex justify-content-between flex-wrap gap-2 mb-2">
+                <strong>{kardexData.product.codigo} - {kardexData.product.nombre}</strong>
+                <span>Stock actual: <strong>{Number(kardexData.product.stock_actual || 0).toFixed(2)}</strong></span>
+              </div>
+              <div className="table-responsive">
+                <table className="table table-sm table-striped align-middle mb-0">
+                  <thead>
+                    <tr>
+                      <th>Fecha</th>
+                      <th>Motivo</th>
+                      <th>Referencia</th>
+                      <th className="text-end">Entrada</th>
+                      <th className="text-end">Salida</th>
+                      <th className="text-end">Saldo</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {kardexData.movements.map((movement) => (
+                      <tr key={movement.id_movimiento}>
+                        <td>{new Date(movement.fecha).toLocaleString()}</td>
+                        <td>{movement.motivo}</td>
+                        <td>{movement.referencia || '-'}</td>
+                        <td className="text-end">{Number(movement.entrada || 0).toFixed(2)}</td>
+                        <td className="text-end">{Number(movement.salida || 0).toFixed(2)}</td>
+                        <td className="text-end fw-bold">{Number(movement.saldo_calculado || 0).toFixed(2)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+
         <div className="search-bar-container mt-1">
           <div className="search-input-wrap">
             <span className="search-icon">

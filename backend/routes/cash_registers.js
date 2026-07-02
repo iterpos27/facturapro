@@ -44,7 +44,9 @@ router.get('/status', async (req, res) => {
     if (result.rows.length === 0) {
       return res.json({ sessionActive: false });
     }
-    res.json({ sessionActive: true, session: result.rows[0] });
+    const session = result.rows[0];
+    const summary = await getCashSessionSummary(session.id_sesion, session.id_usuario, session.fecha_apertura);
+    res.json({ sessionActive: true, session: { ...session, summary } });
   } catch (error) {
     console.error('Error al verificar estado de caja:', error);
     res.status(500).json({ error: 'Error al verificar estado de caja.' });
@@ -132,5 +134,59 @@ router.get('/payment-methods', async (req, res) => {
     res.status(500).json({ error: 'Error al obtener métodos de pago.' });
   }
 });
+
+async function getCashSessionSummary(idSesion, idUsuario, fechaApertura, client = db) {
+  const invoiceRes = await client.query(`
+    SELECT COUNT(*)::int AS facturas,
+           COALESCE(SUM(total), 0) AS total_facturado,
+           COALESCE(SUM(monto_pago), 0) AS pagos_factura,
+           COALESCE(SUM(anticipo), 0) AS anticipos,
+           COALESCE(SUM(cambio), 0) AS cambios
+    FROM facturas
+    WHERE id_sesion_caja = $1 AND estado = 'EMITIDA'
+  `, [idSesion]);
+
+  const paymentBreakdown = await client.query(`
+    SELECT COALESCE(mp.nombre, 'Sin metodo') AS metodo_pago,
+           COALESCE(SUM(fp.monto), 0) AS total
+    FROM factura_pagos fp
+    JOIN facturas f ON fp.id_factura = f.id_factura
+    LEFT JOIN metodos_pago mp ON fp.id_metodo_pago = mp.id_metodo
+    WHERE f.id_sesion_caja = $1 AND f.estado = 'EMITIDA'
+    GROUP BY mp.nombre
+    ORDER BY total DESC
+  `, [idSesion]).catch((error) => {
+    if (error.code === '42P01') return { rows: [] };
+    throw error;
+  });
+
+  const receivablePayments = await client.query(`
+    SELECT COALESCE(SUM(fc.monto), 0) AS total
+    FROM factura_cobros fc
+    WHERE fc.id_usuario = $1 AND fc.fecha_cobro >= $2
+  `, [idUsuario, fechaApertura]).catch((error) => {
+    if (error.code === '42P01') return { rows: [{ total: 0 }] };
+    throw error;
+  });
+
+  const invoices = invoiceRes.rows[0] || {};
+  const pagosFactura = Number(invoices.pagos_factura || 0);
+  const anticipos = Number(invoices.anticipos || 0);
+  const cambios = Number(invoices.cambios || 0);
+  const cobrosCxc = Number(receivablePayments.rows[0]?.total || 0);
+  const ingresosCaja = Math.max(pagosFactura + anticipos + cobrosCxc - cambios, 0);
+
+  return {
+    facturas: Number(invoices.facturas || 0),
+    total_facturado: Number(invoices.total_facturado || 0),
+    pagos_factura: pagosFactura,
+    anticipos,
+    cambios,
+    cobros_cxc: cobrosCxc,
+    ingresos_caja: ingresosCaja,
+    esperado_caja: ingresosCaja,
+    paymentBreakdown: paymentBreakdown.rows,
+  };
+}
 
 module.exports = router;
