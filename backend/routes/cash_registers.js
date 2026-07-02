@@ -2,15 +2,19 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 const { authenticateToken } = require('./auth');
+const { writeAudit } = require('../audit');
 
-// Proteger todas las rutas de caja con autenticación
 router.use(authenticateToken);
 
-// 1. Obtener lista de cajas (GET /api/cash-registers/list)
+const toMoney = (value) => {
+  const numberValue = Number(value || 0);
+  return Number.isFinite(numberValue) && numberValue >= 0 ? numberValue : 0;
+};
+
 router.get('/list', async (req, res) => {
   try {
     const result = await db.query(`
-      SELECT c.*, s.nombre as sucursal_nombre 
+      SELECT c.*, s.nombre as sucursal_nombre
       FROM cajas c
       JOIN sucursales s ON c.id_sucursal = s.id_sucursal
       WHERE c.activo = true
@@ -23,7 +27,6 @@ router.get('/list', async (req, res) => {
   }
 });
 
-// 2. Obtener estado de sesión de caja actual de un usuario (GET /api/cash-registers/status)
 router.get('/status', async (req, res) => {
   const { id_usuario } = req.query;
   try {
@@ -35,15 +38,16 @@ router.get('/status', async (req, res) => {
     `;
     const params = [];
     if (id_usuario) {
-      queryStr += ` AND sc.id_usuario = $1`;
+      queryStr += ' AND sc.id_usuario = $1';
       params.push(parseInt(id_usuario, 10));
     }
-    queryStr += ` ORDER BY sc.fecha_apertura DESC LIMIT 1`;
+    queryStr += ' ORDER BY sc.fecha_apertura DESC LIMIT 1';
 
     const result = await db.query(queryStr, params);
     if (result.rows.length === 0) {
       return res.json({ sessionActive: false });
     }
+
     const session = result.rows[0];
     const summary = await getCashSessionSummary(session.id_sesion, session.id_usuario, session.fecha_apertura);
     res.json({ sessionActive: true, session: { ...session, summary } });
@@ -53,85 +57,152 @@ router.get('/status', async (req, res) => {
   }
 });
 
-// 3. Abrir caja (POST /api/cash-registers/open)
 router.post('/open', async (req, res) => {
-  const { id_caja, id_usuario, monto_apertura } = req.body;
+  const { id_caja, id_usuario, monto_apertura, apertura_billetes, apertura_monedas } = req.body;
+  const bills = toMoney(apertura_billetes);
+  const coins = toMoney(apertura_monedas);
+  const hasDenominations = apertura_billetes !== undefined || apertura_monedas !== undefined;
+  const openingAmount = hasDenominations ? bills + coins : toMoney(monto_apertura);
 
-  if (!id_caja || !id_usuario || monto_apertura === undefined) {
-    return res.status(400).json({ error: 'Caja, usuario y monto de apertura son requeridos.' });
+  if (!id_caja || !id_usuario) {
+    return res.status(400).json({ error: 'Caja y usuario son requeridos.' });
   }
 
-  const montoNum = parseFloat(monto_apertura);
-  if (isNaN(montoNum) || montoNum < 0) {
-    return res.status(400).json({ error: 'El monto de apertura debe ser un número válido mayor o igual a 0.' });
-  }
-
+  const client = await db.pool.connect();
   try {
-    // Validar si la caja ya está abierta
-    const checkActive = await db.query(`
-      SELECT id_sesion FROM sesiones_caja 
+    await client.query('BEGIN');
+
+    const checkActive = await client.query(`
+      SELECT id_sesion
+      FROM sesiones_caja
       WHERE id_caja = $1 AND estado = 'ABIERTA'
     `, [id_caja]);
 
     if (checkActive.rows.length > 0) {
-      return res.status(400).json({ error: 'Esta caja ya tiene una sesión abierta activa.' });
+      throw new Error('Esta caja ya tiene una sesion abierta activa.');
     }
 
-    const result = await db.query(
-      `INSERT INTO sesiones_caja (id_caja, id_usuario, monto_apertura, estado)
-       VALUES ($1, $2, $3, 'ABIERTA')
-       RETURNING *`,
-      [parseInt(id_caja, 10), parseInt(id_usuario, 10), montoNum]
-    );
+    const result = await client.query(`
+      INSERT INTO sesiones_caja (
+        id_caja, id_usuario, monto_apertura, apertura_billetes, apertura_monedas, estado
+      ) VALUES ($1, $2, $3, $4, $5, 'ABIERTA')
+      RETURNING *
+    `, [parseInt(id_caja, 10), parseInt(id_usuario, 10), openingAmount, hasDenominations ? bills : openingAmount, coins]);
 
+    await writeAudit(client, {
+      entity: 'sesiones_caja',
+      entityId: result.rows[0].id_sesion,
+      action: 'ABRIR_CAJA',
+      userId: id_usuario,
+      detail: { apertura_billetes: hasDenominations ? bills : openingAmount, apertura_monedas: coins, monto_apertura: openingAmount },
+    });
+
+    await client.query('COMMIT');
     res.status(201).json(result.rows[0]);
   } catch (error) {
+    await client.query('ROLLBACK');
     console.error('Error al abrir caja:', error);
-    res.status(500).json({ error: 'Error al abrir la sesión de caja.' });
+    res.status(400).json({ error: error.message || 'Error al abrir la sesion de caja.' });
+  } finally {
+    client.release();
   }
 });
 
-// 4. Cerrar caja (POST /api/cash-registers/close)
 router.post('/close', async (req, res) => {
-  const { id_sesion, monto_cierre } = req.body;
+  const { id_sesion, cierre_billetes, cierre_monedas, monto_cierre } = req.body;
+  const bills = toMoney(cierre_billetes);
+  const coins = toMoney(cierre_monedas);
+  const hasDenominations = cierre_billetes !== undefined || cierre_monedas !== undefined;
+  const closingAmount = hasDenominations ? bills + coins : toMoney(monto_cierre);
 
-  if (!id_sesion || monto_cierre === undefined) {
-    return res.status(400).json({ error: 'Sesión de caja y monto de cierre son obligatorios.' });
+  if (!id_sesion) {
+    return res.status(400).json({ error: 'Sesion de caja es obligatoria.' });
   }
 
-  const montoNum = parseFloat(monto_cierre);
-  if (isNaN(montoNum) || montoNum < 0) {
-    return res.status(400).json({ error: 'El monto de cierre debe ser un número válido mayor o igual a 0.' });
-  }
-
+  const client = await db.pool.connect();
   try {
-    const result = await db.query(
-      `UPDATE sesiones_caja
-       SET monto_cierre = $1, estado = 'CERRADA', fecha_cierre = CURRENT_TIMESTAMP
-       WHERE id_sesion = $2 AND estado = 'ABIERTA'
-       RETURNING *`,
-      [montoNum, parseInt(id_sesion, 10)]
-    );
+    await client.query('BEGIN');
 
-    if (result.rows.length === 0) {
-      return res.status(400).json({ error: 'Sesión de caja no encontrada o ya cerrada.' });
+    const sessionRes = await client.query(`
+      SELECT *
+      FROM sesiones_caja
+      WHERE id_sesion = $1 AND estado = 'ABIERTA'
+      FOR UPDATE
+    `, [parseInt(id_sesion, 10)]);
+
+    if (sessionRes.rows.length === 0) {
+      throw new Error('Sesion de caja no encontrada o ya cerrada.');
     }
 
-    res.json(result.rows[0]);
+    const session = sessionRes.rows[0];
+    const summary = await getCashSessionSummary(session.id_sesion, session.id_usuario, session.fecha_apertura, client);
+    const efectivoEsperado = Number(session.monto_apertura || 0) + summary.ventas_contado + summary.cobros_cxc - summary.notas_credito_total;
+    const totalOperativo = efectivoEsperado + summary.ventas_credito;
+    const diferencia = closingAmount - efectivoEsperado;
+
+    const result = await client.query(`
+      UPDATE sesiones_caja
+      SET cierre_billetes = $1,
+          cierre_monedas = $2,
+          monto_cierre = $3,
+          ventas_contado = $4,
+          ventas_credito = $5,
+          cobros_cxc = $6,
+          notas_credito_total = $7,
+          efectivo_esperado = $8,
+          total_operativo = $9,
+          diferencia_cierre = $10,
+          estado = 'CERRADA',
+          fecha_cierre = CURRENT_TIMESTAMP
+      WHERE id_sesion = $11
+      RETURNING *
+    `, [
+      hasDenominations ? bills : closingAmount,
+      coins,
+      closingAmount,
+      summary.ventas_contado,
+      summary.ventas_credito,
+      summary.cobros_cxc,
+      summary.notas_credito_total,
+      efectivoEsperado,
+      totalOperativo,
+      diferencia,
+      parseInt(id_sesion, 10),
+    ]);
+
+    await writeAudit(client, {
+      entity: 'sesiones_caja',
+      entityId: id_sesion,
+      action: 'CERRAR_CAJA',
+      userId: session.id_usuario,
+      detail: {
+        cierre_billetes: hasDenominations ? bills : closingAmount,
+        cierre_monedas: coins,
+        monto_cierre: closingAmount,
+        efectivo_esperado: efectivoEsperado,
+        total_operativo: totalOperativo,
+        diferencia_cierre: diferencia,
+      },
+    });
+
+    await client.query('COMMIT');
+    res.json({ ...result.rows[0], summary: { ...summary, efectivo_esperado: efectivoEsperado, total_operativo: totalOperativo, diferencia_cierre: diferencia } });
   } catch (error) {
+    await client.query('ROLLBACK');
     console.error('Error al cerrar caja:', error);
-    res.status(500).json({ error: 'Error al cerrar la sesión de caja.' });
+    res.status(400).json({ error: error.message || 'Error al cerrar la sesion de caja.' });
+  } finally {
+    client.release();
   }
 });
 
-// 5. Obtener métodos de pago oficiales del SRI (GET /api/cash-registers/payment-methods)
 router.get('/payment-methods', async (req, res) => {
   try {
     const result = await db.query('SELECT * FROM metodos_pago WHERE activo = true ORDER BY codigo_sri ASC');
     res.json(result.rows);
   } catch (error) {
-    console.error('Error al obtener métodos de pago:', error);
-    res.status(500).json({ error: 'Error al obtener métodos de pago.' });
+    console.error('Error al obtener metodos de pago:', error);
+    res.status(500).json({ error: 'Error al obtener metodos de pago.' });
   }
 });
 
@@ -139,12 +210,33 @@ async function getCashSessionSummary(idSesion, idUsuario, fechaApertura, client 
   const invoiceRes = await client.query(`
     SELECT COUNT(*)::int AS facturas,
            COALESCE(SUM(total), 0) AS total_facturado,
+           COALESCE(SUM(total - COALESCE(saldo, 0)), 0) AS ventas_contado,
+           COALESCE(SUM(COALESCE(saldo, 0)), 0) AS ventas_credito,
            COALESCE(SUM(monto_pago), 0) AS pagos_factura,
            COALESCE(SUM(anticipo), 0) AS anticipos,
            COALESCE(SUM(cambio), 0) AS cambios
     FROM facturas
     WHERE id_sesion_caja = $1 AND estado = 'EMITIDA'
   `, [idSesion]);
+
+  const creditNotesRes = await client.query(`
+    SELECT COALESCE(SUM(nc.total), 0) AS total
+    FROM notas_credito nc
+    JOIN facturas f ON nc.id_factura = f.id_factura
+    WHERE f.id_sesion_caja = $1 AND nc.estado = 'EMITIDA'
+  `, [idSesion]).catch((error) => {
+    if (error.code === '42P01') return { rows: [{ total: 0 }] };
+    throw error;
+  });
+
+  const receivablePayments = await client.query(`
+    SELECT COALESCE(SUM(fc.monto), 0) AS total
+    FROM factura_cobros fc
+    WHERE fc.id_usuario = $1 AND fc.fecha_cobro >= $2
+  `, [idUsuario, fechaApertura]).catch((error) => {
+    if (error.code === '42P01') return { rows: [{ total: 0 }] };
+    throw error;
+  });
 
   const paymentBreakdown = await client.query(`
     SELECT COALESCE(mp.nombre, 'Sin metodo') AS metodo_pago,
@@ -160,31 +252,26 @@ async function getCashSessionSummary(idSesion, idUsuario, fechaApertura, client 
     throw error;
   });
 
-  const receivablePayments = await client.query(`
-    SELECT COALESCE(SUM(fc.monto), 0) AS total
-    FROM factura_cobros fc
-    WHERE fc.id_usuario = $1 AND fc.fecha_cobro >= $2
-  `, [idUsuario, fechaApertura]).catch((error) => {
-    if (error.code === '42P01') return { rows: [{ total: 0 }] };
-    throw error;
-  });
-
   const invoices = invoiceRes.rows[0] || {};
-  const pagosFactura = Number(invoices.pagos_factura || 0);
-  const anticipos = Number(invoices.anticipos || 0);
-  const cambios = Number(invoices.cambios || 0);
+  const ventasContado = Number(invoices.ventas_contado || 0);
+  const ventasCredito = Number(invoices.ventas_credito || 0);
   const cobrosCxc = Number(receivablePayments.rows[0]?.total || 0);
-  const ingresosCaja = Math.max(pagosFactura + anticipos + cobrosCxc - cambios, 0);
+  const notasCredito = Number(creditNotesRes.rows[0]?.total || 0);
+  const efectivoTurno = Math.max(ventasContado + cobrosCxc - notasCredito, 0);
 
   return {
     facturas: Number(invoices.facturas || 0),
     total_facturado: Number(invoices.total_facturado || 0),
-    pagos_factura: pagosFactura,
-    anticipos,
-    cambios,
+    ventas_contado: ventasContado,
+    ventas_credito: ventasCredito,
+    pagos_factura: Number(invoices.pagos_factura || 0),
+    anticipos: Number(invoices.anticipos || 0),
+    cambios: Number(invoices.cambios || 0),
     cobros_cxc: cobrosCxc,
-    ingresos_caja: ingresosCaja,
-    esperado_caja: ingresosCaja,
+    notas_credito_total: notasCredito,
+    ingresos_caja: efectivoTurno,
+    esperado_caja: efectivoTurno,
+    total_operativo: efectivoTurno + ventasCredito,
     paymentBreakdown: paymentBreakdown.rows,
   };
 }
