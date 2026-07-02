@@ -121,15 +121,20 @@ export default function ClientFormModal({
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) return 'El correo electronico no tiene un formato valido.';
 
-    if (identificationNumber === CONSUMIDOR_FINAL_ID) return null;
-    if (identificationNumber.length === 10 && !validateCedulaEcuador(identificationNumber)) {
-      return 'La cedula ecuatoriana no es valida.';
-    }
-    if (identificationNumber.length === 13 && !validateRucEcuador(identificationNumber)) {
-      return 'El RUC ecuatoriano no es valido.';
-    }
-    if (![10, 13].includes(identificationNumber.length)) {
-      return 'La identificacion debe ser una cedula de 10 digitos o un RUC de 13 digitos.';
+    if (identificationNumber === CONSUMIDOR_FINAL_ID || identificationNumber === '9999999999') return null;
+    if (identificationNumber.length === 10) {
+      if (!validateCedulaEcuador(identificationNumber)) {
+        return 'La cedula ecuatoriana no es valida.';
+      }
+    } else if (identificationNumber.length === 13) {
+      if (!validateRucEcuador(identificationNumber)) {
+        return 'El RUC ecuatoriano no es valido.';
+      }
+    } else {
+      const isAlphaNumeric = /^[a-zA-Z0-9]+$/.test(identificationNumber);
+      if (!isAlphaNumeric) {
+        return 'La identificacion debe ser alfanumerica valida (Cedula, RUC o Pasaporte).';
+      }
     }
 
     return null;
@@ -218,7 +223,7 @@ export default function ClientFormModal({
                 className="form-control"
                 value={identificationNumber}
                 onChange={(e) =>
-                  setIdentificationNumber(e.target.value.replace(/\D/g, '').slice(0, 13))
+                  setIdentificationNumber(e.target.value.replace(/[^a-zA-Z0-9]/g, '').toUpperCase().slice(0, 20))
                 }
                 placeholder="Identificación"
                 required

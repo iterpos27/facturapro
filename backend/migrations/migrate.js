@@ -1,4 +1,4 @@
-const db = require('./db');
+const db = require('../db');
 
 const migrationSQL = `
 ALTER TABLE clients ADD COLUMN IF NOT EXISTS additional_emails VARCHAR(250);

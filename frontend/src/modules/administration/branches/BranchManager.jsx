@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import Swal from 'sweetalert2';
 import { apiFetch, apiUrl } from '../../../lib/api';
 
@@ -22,6 +22,17 @@ export default function BranchManager() {
     fetchBranches();
     fetchSequentials();
   }, []);
+
+  const handleCancel = useCallback(() => {
+    if (saving) return;
+    setEditingBranch(null);
+    setCodigoEstablecimiento('');
+    setPuntoEmision('');
+    setNombre('');
+    setDireccion('');
+    setActivo(true);
+    setShowForm(false);
+  }, [saving]);
 
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -89,16 +100,6 @@ export default function BranchManager() {
     setShowForm(true);
   };
 
-  function handleCancel() {
-    if (saving) return;
-    setEditingBranch(null);
-    setCodigoEstablecimiento('');
-    setPuntoEmision('');
-    setNombre('');
-    setDireccion('');
-    setActivo(true);
-    setShowForm(false);
-  }
 
   const handleDelete = async (id, bName) => {
     const result = await Swal.fire({

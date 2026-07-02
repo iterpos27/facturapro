@@ -6,8 +6,39 @@ const jwt = require('jsonwebtoken');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-only-facturapro-secret';
 
+// Limitador de intentos de login en memoria para evitar ataques de fuerza bruta
+const rateLimitWindow = 15 * 60 * 1000; // 15 minutos
+const maxLoginAttempts = 5;
+const loginAttempts = new Map();
+
+const loginLimiter = (req, res, next) => {
+  const ip = req.ip || req.headers['x-forwarded-for'] || '127.0.0.1';
+  const now = Date.now();
+
+  if (!loginAttempts.has(ip)) {
+    loginAttempts.set(ip, { count: 1, resetTime: now + rateLimitWindow });
+    return next();
+  }
+
+  const attempt = loginAttempts.get(ip);
+  if (now > attempt.resetTime) {
+    loginAttempts.set(ip, { count: 1, resetTime: now + rateLimitWindow });
+    return next();
+  }
+
+  attempt.count += 1;
+  if (attempt.count > maxLoginAttempts) {
+    const minutesLeft = Math.ceil((attempt.resetTime - now) / 60000);
+    return res.status(429).json({
+      error: `Demasiados intentos fallidos de inicio de sesión. Por favor, intente de nuevo en ${minutesLeft} minutos.`
+    });
+  }
+
+  next();
+};
+
 // 1. Iniciar Sesión (POST /api/auth/login)
-router.post('/login', async (req, res) => {
+router.post('/login', loginLimiter, async (req, res) => {
   const { usernameOrEmail, password } = req.body || {};
 
   if (!usernameOrEmail || !password) {

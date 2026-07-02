@@ -35,8 +35,12 @@ import SupplierManager from './modules/contacts/suppliers/SupplierManager';
 import ProductManager from './modules/inventory/products/ProductManager';
 import CategoryManager from './modules/inventory/categories/CategoryManager';
 import InventoryManager from './modules/inventory/stock/InventoryManager';
+import PurchaseManager from './modules/inventory/purchases/PurchaseManager';
 import ProformaManager from './modules/documents/proformas/ProformaManager';
 import InvoiceManager from './modules/documents/invoices/InvoiceManager';
+import ReceivablesManager from './modules/documents/receivables/ReceivablesManager';
+import CreditNotesManager from './modules/documents/creditnotes/CreditNotesManager';
+import WithholdingsManager from './modules/documents/withholdings/WithholdingsManager';
 import CashRegisterManager from './modules/administration/cash/CashRegisterManager';
 import CompanyManager from './modules/administration/company/CompanyManager';
 import BranchManager from './modules/administration/branches/BranchManager';
@@ -53,18 +57,81 @@ const DEFAULT_MENU_STATE = {
 
 const MENU_STATE_STORAGE_KEY = 'facturapro-menu-state';
 const ACTIVE_TAB_STORAGE_KEY = 'facturapro-active-tab';
+
 const TAB_SECTION_MAP = {
   clients: 'contactos',
   suppliers: 'contactos',
   products: 'inventario',
   categories: 'inventario',
   inventory: 'inventario',
+  purchases: 'inventario',
   proformas: 'documentos',
   invoices: 'documentos',
+  receivables: 'documentos',
+  creditnotes: 'documentos',
+  withholdings: 'documentos',
   reports: 'documentos',
   cash: 'configuracion',
   company: 'configuracion',
   branches: 'configuracion',
+};
+
+// Mapa de accesos y permisos por Rol de Usuario
+const ROLE_PERMISSIONS = {
+  ADMINISTRADOR: {
+    clients: true,
+    suppliers: true,
+    products: true,
+    categories: true,
+    inventory: true,
+    purchases: true,
+    proformas: true,
+    invoices: true,
+    receivables: true,
+    creditnotes: true,
+    withholdings: true,
+    reports: true,
+    cash: true,
+    company: true,
+    branches: true,
+    users: true,
+  },
+  VENDEDOR: {
+    clients: true,
+    suppliers: false,
+    products: true,
+    categories: false,
+    inventory: false,
+    purchases: false,
+    proformas: true,
+    invoices: true,
+    receivables: true,
+    creditnotes: false,
+    withholdings: false,
+    reports: false,
+    cash: true,
+    company: false,
+    branches: false,
+    users: false,
+  },
+  CONTADOR: {
+    clients: true,
+    suppliers: true,
+    products: true,
+    categories: true,
+    inventory: true,
+    purchases: true,
+    proformas: true,
+    invoices: true,
+    receivables: true,
+    creditnotes: true,
+    withholdings: true,
+    reports: true,
+    cash: false,
+    company: false,
+    branches: false,
+    users: false,
+  },
 };
 
 function App() {
@@ -82,7 +149,6 @@ function App() {
       if (!stored) {
         return DEFAULT_MENU_STATE;
       }
-
       return {
         ...DEFAULT_MENU_STATE,
         ...JSON.parse(stored),
@@ -197,7 +263,25 @@ function App() {
     setActiveTab(tab);
   };
 
+  const userRole = currentUser?.rol_nombre || 'VENDEDOR';
+  const permissions = ROLE_PERMISSIONS[userRole] || ROLE_PERMISSIONS.VENDEDOR;
+
   const renderContent = () => {
+    // Si la pestaña activa no es el dashboard y el rol no tiene permisos, denegar
+    if (activeTab !== 'dashboard' && !permissions[activeTab]) {
+      return (
+        <div className="card shadow-sm border module-panel-card">
+          <div className="card-body p-4 text-center">
+            <h3 className="text-danger fw-bold mb-2">Acceso Denegado</h3>
+            <p className="text-secondary mb-3">No tienes permisos para ver esta sección.</p>
+            <button className="btn btn-primary btn-sm" onClick={() => handleNavigate('dashboard')}>
+              Ir al Dashboard
+            </button>
+          </div>
+        </div>
+      );
+    }
+
     switch (activeTab) {
       case 'dashboard':
         return (
@@ -205,33 +289,41 @@ function App() {
             <div className="card-body p-4">
               <h1 className="text-dark fw-bold mb-3">Bienvenido al sistema, {currentUser?.username}</h1>
               <p className="text-secondary mb-4">
-                Has iniciado sesion con el rol de <strong>{currentUser?.rol_nombre}</strong>. Usa el menu lateral para navegar por las opciones.
+                Has iniciado sesión con el rol de <strong>{currentUser?.rol_nombre}</strong>. Usa el menú lateral para navegar por las opciones.
               </p>
               <div className="row g-4 mt-2">
-                <div className="col-md-3">
-                  <div className="card dashboard-tile dashboard-tile-primary" onClick={() => handleNavigate('clients')}>
-                    <h5>Clientes</h5>
-                    <p>Registra y administra clientes en la base de datos.</p>
+                {permissions.clients && (
+                  <div className="col-md-3">
+                    <div className="card dashboard-tile dashboard-tile-primary" onClick={() => handleNavigate('clients')}>
+                      <h5>Clientes</h5>
+                      <p>Registra y administra clientes en la base de datos.</p>
+                    </div>
                   </div>
-                </div>
-                <div className="col-md-3">
-                  <div className="card dashboard-tile dashboard-tile-success" onClick={() => handleNavigate('products')}>
-                    <h5>Productos y servicios</h5>
-                    <p>Administra inventarios, precios y calculo automatico de IVA.</p>
+                )}
+                {permissions.products && (
+                  <div className="col-md-3">
+                    <div className="card dashboard-tile dashboard-tile-success" onClick={() => handleNavigate('products')}>
+                      <h5>Productos y servicios</h5>
+                      <p>Administra inventarios, precios y cálculo automático de IVA.</p>
+                    </div>
                   </div>
-                </div>
-                <div className="col-md-3">
-                  <div className="card dashboard-tile dashboard-tile-warning" onClick={() => handleNavigate('cash')}>
-                    <h5>Caja chica</h5>
-                    <p>Abre y cierra turnos de caja para registrar arqueos diarios.</p>
+                )}
+                {permissions.cash && (
+                  <div className="col-md-3">
+                    <div className="card dashboard-tile dashboard-tile-warning" onClick={() => handleNavigate('cash')}>
+                      <h5>Caja chica</h5>
+                      <p>Abre y cierra turnos de caja para registrar arqueos diarios.</p>
+                    </div>
                   </div>
-                </div>
-                <div className="col-md-3">
-                  <div className="card dashboard-tile dashboard-tile-info" onClick={() => handleNavigate('reports')}>
-                    <h5>Reportes</h5>
-                    <p>Consulta ventas, proformas y auditoria reciente.</p>
+                )}
+                {permissions.reports && (
+                  <div className="col-md-3">
+                    <div className="card dashboard-tile dashboard-tile-info" onClick={() => handleNavigate('reports')}>
+                      <h5>Reportes</h5>
+                      <p>Consulta ventas, proformas y auditoría reciente.</p>
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
             </div>
           </div>
@@ -244,20 +336,28 @@ function App() {
         return <ProductManager />;
       case 'categories':
         return <CategoryManager />;
-      case 'users':
-        return <UserManager />;
-      case 'company':
-        return <CompanyManager />;
-      case 'branches':
-        return <BranchManager />;
       case 'inventory':
         return <InventoryManager />;
-      case 'cash':
-        return <CashRegisterManager />;
+      case 'purchases':
+        return <PurchaseManager />;
       case 'proformas':
         return <ProformaManager onInvoiceProforma={() => handleNavigate('invoices')} />;
       case 'invoices':
         return <InvoiceManager onRedirectToCash={() => handleNavigate('cash')} />;
+      case 'receivables':
+        return <ReceivablesManager />;
+      case 'creditnotes':
+        return <CreditNotesManager />;
+      case 'withholdings':
+        return <WithholdingsManager />;
+      case 'cash':
+        return <CashRegisterManager />;
+      case 'company':
+        return <CompanyManager />;
+      case 'branches':
+        return <BranchManager />;
+      case 'users':
+        return <UserManager />;
       case 'reports':
         return <ReportsDashboard />;
       default:
@@ -315,94 +415,146 @@ function App() {
             </CNavLink>
           </CNavItem>
 
-          {renderSection(
+          {(permissions.clients || permissions.suppliers) && renderSection(
             'contactos',
             'Contactos',
             <>
-              <CNavItem>
-                <CNavLink className="app-nav-link" active={activeTab === 'clients'} onClick={() => handleNavigate('clients')} style={{ cursor: 'pointer' }}>
-                  <CIcon icon={cilUser} className="nav-icon" /> Clientes
-                </CNavLink>
-              </CNavItem>
-              <CNavItem>
-                <CNavLink className="app-nav-link" active={activeTab === 'suppliers'} onClick={() => handleNavigate('suppliers')} style={{ cursor: 'pointer' }}>
-                  <CIcon icon={cilUserFollow} className="nav-icon" /> Proveedores
-                </CNavLink>
-              </CNavItem>
+              {permissions.clients && (
+                <CNavItem>
+                  <CNavLink className="app-nav-link" active={activeTab === 'clients'} onClick={() => handleNavigate('clients')} style={{ cursor: 'pointer' }}>
+                    <CIcon icon={cilUser} className="nav-icon" /> Clientes
+                  </CNavLink>
+                </CNavItem>
+              )}
+              {permissions.suppliers && (
+                <CNavItem>
+                  <CNavLink className="app-nav-link" active={activeTab === 'suppliers'} onClick={() => handleNavigate('suppliers')} style={{ cursor: 'pointer' }}>
+                    <CIcon icon={cilUserFollow} className="nav-icon" /> Proveedores
+                  </CNavLink>
+                </CNavItem>
+              )}
             </>,
           )}
 
-          {renderSection(
+          {(permissions.products || permissions.categories || permissions.inventory || permissions.purchases) && renderSection(
             'inventario',
             'Inventario',
             <>
-              <CNavItem>
-                <CNavLink className="app-nav-link" active={activeTab === 'products'} onClick={() => handleNavigate('products')} style={{ cursor: 'pointer' }}>
-                  <CIcon icon={cilBasket} className="nav-icon" /> Productos
-                </CNavLink>
-              </CNavItem>
-              <CNavItem>
-                <CNavLink className="app-nav-link" active={activeTab === 'categories'} onClick={() => handleNavigate('categories')} style={{ cursor: 'pointer' }}>
-                  <CIcon icon={cilFolder} className="nav-icon" /> Categorías
-                </CNavLink>
-              </CNavItem>
-              <CNavItem>
-                <CNavLink className="app-nav-link" active={activeTab === 'inventory'} onClick={() => handleNavigate('inventory')} style={{ cursor: 'pointer' }}>
-                  <CIcon icon={cilList} className="nav-icon" /> Inventario
-                </CNavLink>
-              </CNavItem>
+              {permissions.products && (
+                <CNavItem>
+                  <CNavLink className="app-nav-link" active={activeTab === 'products'} onClick={() => handleNavigate('products')} style={{ cursor: 'pointer' }}>
+                    <CIcon icon={cilBasket} className="nav-icon" /> Productos
+                  </CNavLink>
+                </CNavItem>
+              )}
+              {permissions.categories && (
+                <CNavItem>
+                  <CNavLink className="app-nav-link" active={activeTab === 'categories'} onClick={() => handleNavigate('categories')} style={{ cursor: 'pointer' }}>
+                    <CIcon icon={cilFolder} className="nav-icon" /> Categorías
+                  </CNavLink>
+                </CNavItem>
+              )}
+              {permissions.inventory && (
+                <CNavItem>
+                  <CNavLink className="app-nav-link" active={activeTab === 'inventory'} onClick={() => handleNavigate('inventory')} style={{ cursor: 'pointer' }}>
+                    <CIcon icon={cilList} className="nav-icon" /> Inventario
+                  </CNavLink>
+                </CNavItem>
+              )}
+              {permissions.purchases && (
+                <CNavItem>
+                  <CNavLink className="app-nav-link" active={activeTab === 'purchases'} onClick={() => handleNavigate('purchases')} style={{ cursor: 'pointer' }}>
+                    <CIcon icon={cilBasket} className="nav-icon" /> Compras
+                  </CNavLink>
+                </CNavItem>
+              )}
             </>,
           )}
 
-          {renderSection(
+          {(permissions.proformas || permissions.invoices || permissions.receivables || permissions.creditnotes || permissions.withholdings || permissions.reports) && renderSection(
             'documentos',
             'Documentos',
             <>
-              <CNavItem>
-                <CNavLink className="app-nav-link" active={activeTab === 'proformas'} onClick={() => handleNavigate('proformas')} style={{ cursor: 'pointer' }}>
-                  <CIcon icon={cilFile} className="nav-icon" /> Proformas
-                </CNavLink>
-              </CNavItem>
-              <CNavItem>
-                <CNavLink className="app-nav-link" active={activeTab === 'invoices'} onClick={() => handleNavigate('invoices')} style={{ cursor: 'pointer' }}>
-                  <CIcon icon={cilFile} className="nav-icon" /> Facturación
-                </CNavLink>
-              </CNavItem>
-              <CNavItem>
-                <CNavLink className="app-nav-link" active={activeTab === 'reports'} onClick={() => handleNavigate('reports')} style={{ cursor: 'pointer' }}>
-                  <CIcon icon={cilSpeedometer} className="nav-icon" /> Reportes
-                </CNavLink>
-              </CNavItem>
+              {permissions.proformas && (
+                <CNavItem>
+                  <CNavLink className="app-nav-link" active={activeTab === 'proformas'} onClick={() => handleNavigate('proformas')} style={{ cursor: 'pointer' }}>
+                    <CIcon icon={cilFile} className="nav-icon" /> Proformas
+                  </CNavLink>
+                </CNavItem>
+              )}
+              {permissions.invoices && (
+                <CNavItem>
+                  <CNavLink className="app-nav-link" active={activeTab === 'invoices'} onClick={() => handleNavigate('invoices')} style={{ cursor: 'pointer' }}>
+                    <CIcon icon={cilFile} className="nav-icon" /> Facturación
+                  </CNavLink>
+                </CNavItem>
+              )}
+              {permissions.receivables && (
+                <CNavItem>
+                  <CNavLink className="app-nav-link" active={activeTab === 'receivables'} onClick={() => handleNavigate('receivables')} style={{ cursor: 'pointer' }}>
+                    <CIcon icon={cilFile} className="nav-icon" /> CxC y Cobros
+                  </CNavLink>
+                </CNavItem>
+              )}
+              {permissions.creditnotes && (
+                <CNavItem>
+                  <CNavLink className="app-nav-link" active={activeTab === 'creditnotes'} onClick={() => handleNavigate('creditnotes')} style={{ cursor: 'pointer' }}>
+                    <CIcon icon={cilFile} className="nav-icon" /> Notas de Crédito
+                  </CNavLink>
+                </CNavItem>
+              )}
+              {permissions.withholdings && (
+                <CNavItem>
+                  <CNavLink className="app-nav-link" active={activeTab === 'withholdings'} onClick={() => handleNavigate('withholdings')} style={{ cursor: 'pointer' }}>
+                    <CIcon icon={cilFile} className="nav-icon" /> Retenciones
+                  </CNavLink>
+                </CNavItem>
+              )}
+              {permissions.reports && (
+                <CNavItem>
+                  <CNavLink className="app-nav-link" active={activeTab === 'reports'} onClick={() => handleNavigate('reports')} style={{ cursor: 'pointer' }}>
+                    <CIcon icon={cilSpeedometer} className="nav-icon" /> Reportes
+                  </CNavLink>
+                </CNavItem>
+              )}
             </>,
           )}
 
-          {renderSection(
+          {(permissions.cash || permissions.company || permissions.branches) && renderSection(
             'configuracion',
             'Configuración / Caja',
             <>
-              <CNavItem>
-                <CNavLink className="app-nav-link" active={activeTab === 'cash'} onClick={() => handleNavigate('cash')} style={{ cursor: 'pointer' }}>
-                  <CIcon icon={cilSpeedometer} className="nav-icon" /> Caja Chica
-                </CNavLink>
-              </CNavItem>
-              <CNavItem>
-                <CNavLink className="app-nav-link" active={activeTab === 'company'} onClick={() => handleNavigate('company')} style={{ cursor: 'pointer' }}>
-                  <CIcon icon={cilSettings} className="nav-icon" /> Config. Empresa
-                </CNavLink>
-              </CNavItem>
-              <CNavItem>
-                <CNavLink className="app-nav-link" active={activeTab === 'branches'} onClick={() => handleNavigate('branches')} style={{ cursor: 'pointer' }}>
-                  <CIcon icon={cilHome} className="nav-icon" /> Sucursales
-                </CNavLink>
-              </CNavItem>
+              {permissions.cash && (
+                <CNavItem>
+                  <CNavLink className="app-nav-link" active={activeTab === 'cash'} onClick={() => handleNavigate('cash')} style={{ cursor: 'pointer' }}>
+                    <CIcon icon={cilSpeedometer} className="nav-icon" /> Caja Chica
+                  </CNavLink>
+                </CNavItem>
+              )}
+              {permissions.company && (
+                <CNavItem>
+                  <CNavLink className="app-nav-link" active={activeTab === 'company'} onClick={() => handleNavigate('company')} style={{ cursor: 'pointer' }}>
+                    <CIcon icon={cilSettings} className="nav-icon" /> Config. Empresa
+                  </CNavLink>
+                </CNavItem>
+              )}
+              {permissions.branches && (
+                <CNavItem>
+                  <CNavLink className="app-nav-link" active={activeTab === 'branches'} onClick={() => handleNavigate('branches')} style={{ cursor: 'pointer' }}>
+                    <CIcon icon={cilHome} className="nav-icon" /> Sucursales
+                  </CNavLink>
+                </CNavItem>
+              )}
             </>,
           )}
 
-          <CNavItem>
-            <CNavLink className="app-nav-link" active={activeTab === 'users'} onClick={() => handleNavigate('users')} style={{ cursor: 'pointer' }}>
-              <CIcon icon={cilPeople} className="nav-icon" /> Usuarios
-            </CNavLink>
-          </CNavItem>
+          {permissions.users && (
+            <CNavItem>
+              <CNavLink className="app-nav-link" active={activeTab === 'users'} onClick={() => handleNavigate('users')} style={{ cursor: 'pointer' }}>
+                <CIcon icon={cilPeople} className="nav-icon" /> Usuarios
+              </CNavLink>
+            </CNavItem>
+          )}
         </CSidebarNav>
       </CSidebar>
 

@@ -1,4 +1,4 @@
-const db = require('./db');
+const db = require('../db');
 
 const migrationSQL = `
 -- 1. Renombrar columnas en productos

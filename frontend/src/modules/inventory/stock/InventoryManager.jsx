@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { apiFetch } from '../../../lib/api';
 import { showToast } from '../../../lib/toast';
 import ProductSearchInput from '../../../shared/ProductSearchInput';
@@ -37,6 +37,11 @@ export default function InventoryManager() {
     }
   }, []);
 
+  const handleCancel = useCallback(() => {
+    if (saving) return;
+    resetForm();
+  }, [saving]);
+
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.key === 'Escape' && showForm && !saving) {
@@ -46,7 +51,7 @@ export default function InventoryManager() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [showForm, saving]);
+  }, [showForm, saving, handleCancel]);
 
   const fetchMovements = async () => {
     setLoading(true);
@@ -85,10 +90,6 @@ export default function InventoryManager() {
     setShowForm(false);
   };
 
-  const handleCancel = () => {
-    if (saving) return;
-    resetForm();
-  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -180,8 +181,11 @@ export default function InventoryManager() {
       </div>
 
       <div className="client-data-panel">
-        <div className="search-bar-container client-search-wrap">
-          <div className="module-toolbar-row">
+        <div className="search-bar-container mt-1">
+          <div className="search-input-wrap">
+            <span className="search-icon">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
+            </span>
             <input
               type="text"
               className="form-control"
@@ -189,20 +193,27 @@ export default function InventoryManager() {
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Buscar por producto, codigo, motivo o referencia..."
             />
-            <select className="form-control" value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
-              <option value="ALL">Todos los tipos</option>
-              <option value="INGRESO">Ingresos</option>
-              <option value="EGRESO">Egresos</option>
-            </select>
-            <select className="form-control" value={reasonFilter} onChange={(e) => setReasonFilter(e.target.value)}>
-              <option value="ALL">Todos los motivos</option>
-              {reasonOptions.map((reason) => (
-                <option key={reason} value={reason}>
-                  {reason}
-                </option>
-              ))}
-            </select>
           </div>
+          <select className="form-select" style={{ flex: '0 0 145px' }} value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
+            <option value="ALL">Todos los tipos</option>
+            <option value="INGRESO">Ingresos</option>
+            <option value="EGRESO">Egresos</option>
+          </select>
+          <select className="form-select" style={{ flex: '0 0 170px' }} value={reasonFilter} onChange={(e) => setReasonFilter(e.target.value)}>
+            <option value="ALL">Todos los motivos</option>
+            {reasonOptions.map((reason) => (
+              <option key={reason} value={reason}>{reason}</option>
+            ))}
+          </select>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}
+            onClick={() => { setSearchQuery(''); setTypeFilter('ALL'); setReasonFilter('ALL'); }}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+            Limpiar
+          </button>
         </div>
         {loading ? (
           <p style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>Cargando kárdex...</p>
@@ -239,12 +250,12 @@ export default function InventoryManager() {
                         <td style={{ fontWeight: '600' }}>{mov.producto_codigo}</td>
                         <td>{mov.producto_nombre}</td>
                         <td>
-                          <span 
-                            className={`badge`} 
-                            style={{ 
-                              backgroundColor: isIngreso ? '#d2f4ea' : '#f8d7da', 
+                          <span
+                            className="badge"
+                            style={{
+                              backgroundColor: isIngreso ? '#d2f4ea' : '#f8d7da',
                               color: isIngreso ? '#14a44d' : '#dc3545',
-                              fontWeight: 'bold'
+                              fontWeight: 'bold',
                             }}
                           >
                             {mov.tipo}
@@ -270,12 +281,12 @@ export default function InventoryManager() {
                   <div key={mov.id_movimiento} className="client-mobile-card">
                     <div className="client-card-header">
                       <span className="client-name">{mov.producto_nombre}</span>
-                      <span 
-                        className={`badge`} 
-                        style={{ 
-                          backgroundColor: isIngreso ? '#d2f4ea' : '#f8d7da', 
+                      <span
+                        className="badge"
+                        style={{
+                          backgroundColor: isIngreso ? '#d2f4ea' : '#f8d7da',
                           color: isIngreso ? '#14a44d' : '#dc3545',
-                          fontWeight: 'bold'
+                          fontWeight: 'bold',
                         }}
                       >
                         {mov.tipo}

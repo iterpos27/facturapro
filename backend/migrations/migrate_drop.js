@@ -1,4 +1,4 @@
-const db = require('./db');
+const db = require('../db');
 
 const dropSQL = `
 ALTER TABLE clients DROP COLUMN IF EXISTS identification_type;

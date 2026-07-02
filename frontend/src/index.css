@@ -337,16 +337,63 @@
   max-width: 680px;
 }
 
+/* ── Barra de búsqueda / filtros ─────────────────────────── */
 .search-bar-container:not(.client-search-wrap) {
   margin-bottom: 1rem;
+  background: #ffffff;
+  border: 1px solid #e4eaf4;
+  border-radius: 18px;
+  padding: 0.75rem 1rem;
+  box-shadow: 0 2px 12px rgba(44, 62, 98, 0.07);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.55rem;
 }
 
-.search-bar-container:not(.client-search-wrap) .form-control {
-  border-radius: 14px;
-  min-height: 48px;
-  border-color: #d9e1ef;
-  background: #f8faff;
-  box-shadow: none;
+.search-bar-container:not(.client-search-wrap) .form-control,
+.search-bar-container:not(.client-search-wrap) .form-select {
+  border-radius: 12px !important;
+  min-height: 42px;
+  border-color: #d0daea !important;
+  background: #f4f7fd !important;
+  box-shadow: none !important;
+  font-size: 0.9rem;
+  color: #3a4a6b;
+}
+
+.search-bar-container:not(.client-search-wrap) .form-control:focus,
+.search-bar-container:not(.client-search-wrap) .form-select:focus {
+  border-color: #4f7cff !important;
+  background: #fff !important;
+  box-shadow: 0 0 0 3px rgba(79, 124, 255, 0.12) !important;
+}
+
+.search-bar-container:not(.client-search-wrap) .btn {
+  border-radius: 12px !important;
+  min-height: 42px;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+/* Búsqueda con ícono embebido */
+.search-bar-container .search-input-wrap {
+  position: relative;
+  flex: 1 1 220px;
+  min-width: 180px;
+}
+.search-bar-container .search-input-wrap .search-icon {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #8fa3c8;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+}
+.search-bar-container .search-input-wrap .form-control {
+  padding-left: 2.35rem !important;
 }
 
 .table-responsive.desktop-only {
@@ -924,14 +971,20 @@ body[data-theme='dark'] .client-card-actions {
   border-color: rgba(148, 163, 184, 0.12);
 }
 
+body[data-theme='dark'] .search-bar-container:not(.client-search-wrap) {
+  background: #131c2e;
+  border-color: rgba(148, 163, 184, 0.16);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.25);
+}
+
 body[data-theme='dark'] .search-bar-container:not(.client-search-wrap) .form-control,
 body[data-theme='dark'] .client-search-wrap .form-control,
 body[data-theme='dark'] .form-control,
 body[data-theme='dark'] .form-select,
 body[data-theme='dark'] select {
-  background: #101827;
+  background: #101827 !important;
   color: #e7edf8;
-  border-color: rgba(148, 163, 184, 0.16);
+  border-color: rgba(148, 163, 184, 0.16) !important;
 }
 
 body[data-theme='dark'] .module-badge-role {
@@ -1850,3 +1903,78 @@ body[data-theme='dark'] .btn-light:hover {
   background-color: rgba(148, 163, 184, 0.15) !important;
 }
 
+/* ==========================================================================
+   ESTILOS DE IMPRESIÓN A4 ESTÁNDAR (RIDE SRI ECUADOR)
+   ========================================================================== */
+@media print {
+  /* Ocultar elementos innecesarios */
+  .app-sidebar,
+  .app-topbar,
+  .app-footer,
+  .modal-close-btn,
+  .form-actions-buttons,
+  .btn,
+  header,
+  footer,
+  aside,
+  nav {
+    display: none !important;
+  }
+
+  /* Resetear contenedores para impresión a pantalla completa */
+  body,
+  .app-shell,
+  .wrapper,
+  .body,
+  .app-content-frame,
+  .modal-overlay {
+    background: #ffffff !important;
+    color: #000000 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    border: none !important;
+    box-shadow: none !important;
+    width: 100% !important;
+    height: auto !important;
+    position: static !important;
+    display: block !important;
+    overflow: visible !important;
+  }
+
+  .modal-container {
+    background: #ffffff !important;
+    color: #000000 !important;
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    max-width: 100% !important;
+    width: 100% !important;
+    max-height: none !important;
+    overflow: visible !important;
+    font-size: 11pt !important;
+  }
+
+  /* Ajustar tablas para impresión */
+  table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    font-size: 10pt !important;
+  }
+
+  table th,
+  table td {
+    border: 1px solid #000000 !important;
+    padding: 6px !important;
+    color: #000000 !important;
+  }
+
+  /* Forzar colores de fondo de encabezados de tabla al imprimir */
+  table thead th,
+  .table-light,
+  .table-secondary {
+    background-color: #f1f5f9 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}

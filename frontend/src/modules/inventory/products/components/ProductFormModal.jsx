@@ -100,10 +100,6 @@ export default function ProductFormModal({
     return selectedTax ? parseFloat(selectedTax.porcentaje) : 0;
   };
 
-  const calculatePriceWithIva = () => {
-    const base = parseFloat(precioVenta) || 0;
-    return base * (1 + getTaxPercent() / 100);
-  };
 
   const validateForm = () => {
     if (!nombre.trim()) return 'El nombre del producto es obligatorio.';
@@ -301,9 +297,22 @@ export default function ProductFormModal({
                 min="0"
                 className="form-control"
                 value={precioCompra}
-                onChange={(e) => setPrecioCompra(e.target.value)}
+                onChange={(e) => handlePrecioCompraChange(e.target.value)}
                 placeholder="0.00"
                 required
+                disabled={saving}
+              />
+            </div>
+
+            <div className="form-group mb-3" style={{ gridColumn: 'span 3' }}>
+              <label className="form-label">% de utilidad</label>
+              <input
+                type="number"
+                step="0.01"
+                className="form-control"
+                value={utilidad}
+                onChange={(e) => handleUtilidadChange(e.target.value)}
+                placeholder="0.00"
                 disabled={saving}
               />
             </div>
@@ -316,7 +325,7 @@ export default function ProductFormModal({
                 min="0"
                 className="form-control"
                 value={precioVenta}
-                onChange={(e) => setPrecioVenta(e.target.value)}
+                onChange={(e) => handlePrecioVentaChange(e.target.value)}
                 placeholder="0.00"
                 required
                 disabled={saving}
@@ -325,9 +334,16 @@ export default function ProductFormModal({
 
             <div className="form-group mb-3" style={{ gridColumn: 'span 3' }}>
               <label className="form-label">Precio final con IVA</label>
-              <div className="form-control" style={{ fontWeight: 700, color: '#2eb85c', backgroundColor: '#f8f9fa' }}>
-                ${calculatePriceWithIva().toFixed(2)}
-              </div>
+              <input
+                type="number"
+                step="0.0001"
+                min="0"
+                className="form-control"
+                value={precioVenta ? (parseFloat(precioVenta) * (1 + getTaxPercent() / 100)).toFixed(2) : ''}
+                onChange={(e) => handlePrecioFinalChange(e.target.value)}
+                placeholder="0.00"
+                disabled={saving}
+              />
             </div>
 
             <div className="form-group mb-3" style={{ gridColumn: 'span 4' }}>

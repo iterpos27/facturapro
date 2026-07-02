@@ -2,6 +2,11 @@ const express = require('express');
 const cors = require('cors');
 require('dotenv').config();
 
+if (process.env.NODE_ENV === 'production' && (!process.env.JWT_SECRET || process.env.JWT_SECRET === 'dev-only-facturapro-secret')) {
+  console.error('FATAL: Se debe configurar JWT_SECRET con un valor seguro en entornos de producción.');
+  process.exit(1);
+}
+
 const app = express();
 const PORT = process.env.PORT || 5000;
 const corsOrigin = process.env.CORS_ORIGIN;
@@ -36,6 +41,9 @@ const invoiceRoutes = require('./routes/invoices');
 const proformaRoutes = require('./routes/proformas');
 const sequentialRoutes = require('./routes/sequentials');
 const reportRoutes = require('./routes/reports');
+const purchaseRoutes = require('./routes/purchases');
+const creditNotesRoutes = require('./routes/credit_notes');
+const withholdingsRoutes = require('./routes/withholdings');
 
 app.use('/api/auth', authRoutes);
 app.use('/api/clients', authenticateToken, clientRoutes);
@@ -51,6 +59,9 @@ app.use('/api/invoices', authenticateToken, invoiceRoutes);
 app.use('/api/proformas', authenticateToken, proformaRoutes);
 app.use('/api/sequentials', authenticateToken, sequentialRoutes);
 app.use('/api/reports', authenticateToken, reportRoutes);
+app.use('/api/purchases', authenticateToken, purchaseRoutes);
+app.use('/api/credit-notes', authenticateToken, creditNotesRoutes);
+app.use('/api/withholdings', authenticateToken, withholdingsRoutes);
 
 
 // Manejo de errores global

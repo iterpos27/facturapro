@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import Swal from 'sweetalert2';
 import CIcon from '@coreui/icons-react';
 import { cilPencil, cilTrash } from '@coreui/icons';
@@ -25,6 +25,20 @@ export default function SupplierManager() {
   useEffect(() => {
     fetchSuppliers();
   }, []);
+
+  const handleCancel = useCallback(() => {
+    if (saving) return;
+    setEditingSupplier(null);
+    setTipoIdentificacion('RUC');
+    setIdentificacion('');
+    setNombre('');
+    setEmail('');
+    setTelefono('');
+    setDireccion('');
+    setObservacion('');
+    setActivo(true);
+    setShowForm(false);
+  }, [saving]);
 
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -84,19 +98,6 @@ export default function SupplierManager() {
     setShowForm(true);
   };
 
-  function handleCancel() {
-    if (saving) return;
-    setEditingSupplier(null);
-    setTipoIdentificacion('RUC');
-    setIdentificacion('');
-    setNombre('');
-    setEmail('');
-    setTelefono('');
-    setDireccion('');
-    setObservacion('');
-    setActivo(true);
-    setShowForm(false);
-  }
 
   const handleDelete = async (id, sName) => {
     const result = await Swal.fire({

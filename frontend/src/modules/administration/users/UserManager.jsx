@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import Swal from 'sweetalert2';
 import { apiFetch, apiUrl } from '../../../lib/api';
 
@@ -20,6 +20,17 @@ export default function UserManager() {
     fetchUsers();
     fetchRoles();
   }, []);
+
+  const handleCancel = useCallback(() => {
+    if (saving) return;
+    setEditingUser(null);
+    setUsername('');
+    setEmail('');
+    setPassword('');
+    if (roles.length > 0) setIdRol(roles[0].id_rol);
+    setActivo(true);
+    setShowForm(false);
+  }, [saving, roles]);
 
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -89,16 +100,6 @@ export default function UserManager() {
     setShowForm(true);
   };
 
-  function handleCancel() {
-    if (saving) return;
-    setEditingUser(null);
-    setUsername('');
-    setEmail('');
-    setPassword('');
-    if (roles.length > 0) setIdRol(roles[0].id_rol);
-    setActivo(true);
-    setShowForm(false);
-  }
 
   const handleDelete = async (id, uName) => {
     if (uName === 'admin') {

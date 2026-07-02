@@ -119,13 +119,7 @@ export default function ProductTable({ products, onEdit, onDelete }) {
             <div key={prod.id_producto} className="client-mobile-card">
               <div className="client-card-header">
                 <span className="client-name">{prod.nombre}</span>
-                <span
-                  className={`badge ${prod.activo ? 'badge-cedula' : 'badge-consumidor'}`}
-                  style={{
-                    backgroundColor: prod.activo ? '#d2f4ea' : '#f8d7da',
-                    color: prod.activo ? '#14a44d' : '#dc3545',
-                  }}
-                >
+                <span className={`module-badge ${prod.activo ? 'module-badge-active' : 'module-badge-inactive'}`}>
                   {prod.activo ? 'Activo' : 'Inactivo'}
                 </span>
               </div>

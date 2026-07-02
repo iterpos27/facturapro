@@ -5,7 +5,7 @@ const db = require('../db');
 const { writeAudit } = require('../audit');
 
 const formatTransactionNumber = (value) => String(Number(value) || 0).padStart(6, '0');
-const formatProformaNumber = (transactionNumber) => `PRO-${formatTransactionNumber(transactionNumber)}`;
+const formatProformaNumber = (transactionNumber) => formatTransactionNumber(transactionNumber);
 
 const mapRowToProforma = (row, items = []) => ({
   id: row.id_proforma,

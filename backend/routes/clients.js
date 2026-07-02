@@ -112,15 +112,19 @@ router.post('/', async (req, res) => {
     return res.status(400).json({ error: 'El correo electronico no tiene un formato valido.' });
   }
 
-  if (cleanIdentification !== CONSUMIDOR_FINAL_ID) {
-    if (cleanIdentification.length === 10 && !validateCedulaEcuador(cleanIdentification)) {
-      return res.status(400).json({ error: 'La cedula ecuatoriana no es valida.' });
-    }
-    if (cleanIdentification.length === 13 && !validateRucEcuador(cleanIdentification)) {
-      return res.status(400).json({ error: 'El RUC ecuatoriano no es valido.' });
-    }
-    if (![10, 13].includes(cleanIdentification.length)) {
-      return res.status(400).json({ error: 'La identificacion debe ser una cedula de 10 digitos o un RUC de 13 digitos.' });
+  if (cleanIdentification !== CONSUMIDOR_FINAL_ID && cleanIdentification !== '9999999999') {
+    if (cleanIdentification.length === 10) {
+      if (!validateCedulaEcuador(cleanIdentification)) {
+        return res.status(400).json({ error: 'La cedula ecuatoriana no es valida.' });
+      }
+    } else if (cleanIdentification.length === 13) {
+      if (!validateRucEcuador(cleanIdentification)) {
+        return res.status(400).json({ error: 'El RUC ecuatoriano no es valido.' });
+      }
+    } else {
+      if (!/^[a-zA-Z0-9]+$/.test(cleanIdentification)) {
+        return res.status(400).json({ error: 'La identificación debe ser alfanumérica válida.' });
+      }
     }
   }
 
@@ -178,15 +182,19 @@ router.put('/:id', async (req, res) => {
     return res.status(400).json({ error: 'El correo electronico no tiene un formato valido.' });
   }
 
-  if (cleanIdentification !== CONSUMIDOR_FINAL_ID) {
-    if (cleanIdentification.length === 10 && !validateCedulaEcuador(cleanIdentification)) {
-      return res.status(400).json({ error: 'La cedula ecuatoriana no es valida.' });
-    }
-    if (cleanIdentification.length === 13 && !validateRucEcuador(cleanIdentification)) {
-      return res.status(400).json({ error: 'El RUC ecuatoriano no es valido.' });
-    }
-    if (![10, 13].includes(cleanIdentification.length)) {
-      return res.status(400).json({ error: 'La identificacion debe ser una cedula de 10 digitos o un RUC de 13 digitos.' });
+  if (cleanIdentification !== CONSUMIDOR_FINAL_ID && cleanIdentification !== '9999999999') {
+    if (cleanIdentification.length === 10) {
+      if (!validateCedulaEcuador(cleanIdentification)) {
+        return res.status(400).json({ error: 'La cedula ecuatoriana no es valida.' });
+      }
+    } else if (cleanIdentification.length === 13) {
+      if (!validateRucEcuador(cleanIdentification)) {
+        return res.status(400).json({ error: 'El RUC ecuatoriano no es valido.' });
+      }
+    } else {
+      if (!/^[a-zA-Z0-9]+$/.test(cleanIdentification)) {
+        return res.status(400).json({ error: 'La identificación debe ser alfanumérica válida.' });
+      }
     }
   }
 

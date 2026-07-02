@@ -3,6 +3,7 @@ const router = express.Router();
 const db = require('../db');
 const { authenticateToken } = require('./auth');
 const { writeAudit } = require('../audit');
+const { generarClaveAccesoSRI } = require('../sri_utils');
 
 router.use(authenticateToken);
 
@@ -21,6 +22,24 @@ router.get('/', async (req, res) => {
   } catch (error) {
     console.error('Error al obtener facturas:', error);
     res.status(500).json({ error: 'Error al consultar facturas emitidas.' });
+  }
+});
+
+// Obtener facturas con saldo pendiente (Cuentas por Cobrar)
+router.get('/receivables', async (req, res) => {
+  try {
+    const result = await db.query(`
+      SELECT f.*, c.name as cliente_nombre, c.identification_number as cliente_identificacion, c.phone as cliente_telefono, u.username
+      FROM facturas f
+      JOIN clients c ON f.id_cliente = c.id
+      LEFT JOIN usuarios u ON f.id_usuario = u.id_usuario
+      WHERE f.estado = 'EMITIDA' AND f.saldo > 0
+      ORDER BY f.fecha_emision DESC
+    `);
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error al obtener cuentas por cobrar:', error);
+    res.status(500).json({ error: 'Error al consultar las cuentas por cobrar.' });
   }
 });
 
@@ -61,10 +80,23 @@ router.get('/:id', async (req, res) => {
       throw error;
     });
 
+    const cobrosRes = await db.query(`
+      SELECT fc.*, mp.nombre AS metodo_pago_nombre, u.username
+      FROM factura_cobros fc
+      LEFT JOIN metodos_pago mp ON fc.id_metodo_pago = mp.id_metodo
+      LEFT JOIN usuarios u ON fc.id_usuario = u.id_usuario
+      WHERE fc.id_factura = $1
+      ORDER BY fc.fecha_cobro ASC
+    `, [req.params.id]).catch((error) => {
+      if (error.code === '42P01') return { rows: [] };
+      throw error;
+    });
+
     res.json({
       invoice: invoiceRes.rows[0],
       details: detailsRes.rows,
       payments: paymentsRes.rows,
+      cobros: cobrosRes.rows,
     });
   } catch (error) {
     console.error('Error al obtener detalle de factura:', error);
@@ -228,12 +260,22 @@ router.post('/', async (req, res) => {
     const cambio = Math.max(totalPagado - totalFactura, 0);
     const saldo = Math.max(totalFactura - totalPagado, 0);
 
+    const accessKey = generarClaveAccesoSRI({
+      fechaEmision: new Date(),
+      tipoComprobante: '01',
+      ruc: '1792345678001',
+      ambiente: '1',
+      establecimiento: codigo_establecimiento,
+      puntoEmision: punto_emision,
+      secuencial: seqActual,
+    });
+
     const invoiceInserted = await client.query(`
       INSERT INTO facturas (
         id_sucursal, secuencial, numero_factura, id_cliente, id_usuario, id_sesion_caja,
         subtotal_sin_impuestos, subtotal_con_iva, subtotal_iva_cero, descuento_total,
-        valor_iva, total, id_metodo_pago, id_proforma, monto_pago, anticipo, cambio, saldo, observacion
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
+        valor_iva, total, id_metodo_pago, id_proforma, monto_pago, anticipo, cambio, saldo, observacion, clave_acceso
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
       RETURNING *
     `, [
       id_sucursal,
@@ -255,6 +297,7 @@ router.post('/', async (req, res) => {
       cambio,
       saldo,
       observacion || '',
+      accessKey,
     ]);
     const id_factura = invoiceInserted.rows[0].id_factura;
 
@@ -394,6 +437,89 @@ router.put('/:id/cancel', async (req, res) => {
     await client.query('ROLLBACK');
     console.error('Error al anular factura:', error);
     res.status(400).json({ error: error.message || 'Error al procesar la anulacion.' });
+  } finally {
+    client.release();
+  }
+});
+
+// Registrar un abono (cobro) a una factura con saldo pendiente (Cuentas por Cobrar)
+router.post('/:id/payments', async (req, res) => {
+  const { id } = req.params;
+  const { id_metodo_pago, monto, referencia, id_usuario } = req.body || {};
+
+  if (!id_metodo_pago || !monto || parseFloat(monto) <= 0 || !id_usuario) {
+    return res.status(400).json({ error: 'Faltan datos obligatorios para registrar el cobro.' });
+  }
+
+  const client = await db.pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    // Obtener factura y bloquear fila
+    const factRes = await client.query(
+      'SELECT id_factura, numero_factura, saldo, total, estado FROM facturas WHERE id_factura = $1 FOR UPDATE',
+      [id]
+    );
+
+    if (factRes.rows.length === 0) {
+      throw new Error('Factura no encontrada.');
+    }
+
+    const factura = factRes.rows[0];
+    if (factura.estado === 'ANULADA') {
+      throw new Error('No se pueden registrar cobros en una factura anulada.');
+    }
+
+    const currentSaldo = parseFloat(factura.saldo || 0);
+    const paymentAmount = parseFloat(monto);
+
+    if (currentSaldo <= 0) {
+      throw new Error('La factura ya está totalmente pagada.');
+    }
+
+    if (paymentAmount > currentSaldo + 0.0001) {
+      throw new Error(`El monto del cobro ($${paymentAmount.toFixed(2)}) supera el saldo pendiente ($${currentSaldo.toFixed(2)}).`);
+    }
+
+    // Insertar cobro
+    const cobroRes = await client.query(`
+      INSERT INTO factura_cobros (id_factura, id_metodo_pago, monto, referencia, id_usuario)
+      VALUES ($1, $2, $3, $4, $5)
+      RETURNING *
+    `, [id, id_metodo_pago, paymentAmount, referencia || '', id_usuario]);
+
+    // Actualizar saldo
+    const newSaldo = Math.max(currentSaldo - paymentAmount, 0);
+    await client.query(
+      'UPDATE facturas SET saldo = $1 WHERE id_factura = $2',
+      [newSaldo, id]
+    );
+
+    // Auditoría
+    await writeAudit(client, {
+      entity: 'facturas',
+      entityId: id,
+      action: 'REGISTRAR_COBRO_CXC',
+      userId: id_usuario,
+      detail: {
+        numero_factura: factura.numero_factura,
+        monto_cobro: paymentAmount,
+        saldo_anterior: currentSaldo,
+        nuevo_saldo: newSaldo,
+        referencia: referencia || ''
+      }
+    });
+
+    await client.query('COMMIT');
+    res.status(201).json({
+      message: 'Cobro registrado exitosamente.',
+      payment: cobroRes.rows[0],
+      nuevo_saldo: newSaldo
+    });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Error al registrar cobro cxc:', error);
+    res.status(400).json({ error: error.message || 'Error al procesar el cobro.' });
   } finally {
     client.release();
   }

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import Swal from 'sweetalert2';
 import { apiFetch, apiUrl } from '../../../lib/api';
 
@@ -24,6 +24,15 @@ export default function CategoryManager() {
   useEffect(() => {
     fetchCategories();
   }, []);
+
+  const handleCancel = useCallback(() => {
+    if (saving) return;
+    setEditingCategory(null);
+    setNombre('');
+    setDescripcion('');
+    setActivo(true);
+    setShowForm(false);
+  }, [saving]);
 
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -82,14 +91,6 @@ export default function CategoryManager() {
     setShowForm(true);
   };
 
-  function handleCancel() {
-    if (saving) return;
-    setEditingCategory(null);
-    setNombre('');
-    setDescripcion('');
-    setActivo(true);
-    setShowForm(false);
-  }
 
   const handleDelete = async (id, catName) => {
     const result = await Swal.fire({
@@ -236,7 +237,7 @@ export default function CategoryManager() {
                       <td style={{ fontWeight: '600' }}>{cat.nombre}</td>
                       <td>{cat.descripcion || '-'}</td>
                       <td>
-                        <span className={`badge ${cat.activo ? 'badge-cedula' : 'badge-consumidor'}`}>
+                        <span className={`module-badge ${cat.activo ? 'module-badge-active' : 'module-badge-inactive'}`}>
                           {cat.activo ? 'Activo' : 'Inactivo'}
                         </span>
                       </td>
@@ -270,7 +271,7 @@ export default function CategoryManager() {
                 <div key={cat.id_categoria} className="client-mobile-card">
                   <div className="client-card-header">
                     <span className="client-name">{cat.nombre}</span>
-                    <span className={`badge ${cat.activo ? 'badge-cedula' : 'badge-consumidor'}`}>
+                    <span className={`module-badge ${cat.activo ? 'module-badge-active' : 'module-badge-inactive'}`}>
                       {cat.activo ? 'Activo' : 'Inactivo'}
                     </span>
                   </div>
