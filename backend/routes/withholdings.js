@@ -148,4 +148,53 @@ router.post('/', async (req, res) => {
   }
 });
 
+router.put('/:id/cancel', async (req, res) => {
+  const { id } = req.params;
+  const { id_usuario, reason } = req.body || {};
+
+  if (!id_usuario || !String(reason || '').trim()) {
+    return res.status(400).json({ error: 'Usuario y motivo de anulacion son obligatorios.' });
+  }
+
+  const client = await db.pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const retRes = await client.query('SELECT * FROM retenciones WHERE id_retencion = $1 FOR UPDATE', [id]);
+    if (retRes.rows.length === 0) {
+      throw new Error('Retencion no encontrada.');
+    }
+    if (retRes.rows[0].estado === 'ANULADA') {
+      throw new Error('La retencion ya se encuentra anulada.');
+    }
+
+    const updateRes = await client.query(`
+      UPDATE retenciones
+      SET estado = 'ANULADA',
+          motivo_anulacion = $1,
+          anulada_at = CURRENT_TIMESTAMP,
+          anulada_por = $2
+      WHERE id_retencion = $3
+      RETURNING *
+    `, [String(reason).trim(), id_usuario, id]);
+
+    await writeAudit(client, {
+      entity: 'retenciones',
+      entityId: id,
+      action: 'ANULAR_RETENCION',
+      userId: id_usuario,
+      detail: { numero_retencion: retRes.rows[0].numero_retencion, reason: String(reason).trim() },
+    });
+
+    await client.query('COMMIT');
+    res.json(updateRes.rows[0]);
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Error al anular retencion:', error);
+    res.status(400).json({ error: error.message || 'Error al anular la retencion.' });
+  } finally {
+    client.release();
+  }
+});
+
 module.exports = router;

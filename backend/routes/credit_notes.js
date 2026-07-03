@@ -236,4 +236,74 @@ router.post('/', async (req, res) => {
   }
 });
 
+router.put('/:id/cancel', async (req, res) => {
+  const { id } = req.params;
+  const { id_usuario, reason } = req.body || {};
+
+  if (!id_usuario || !String(reason || '').trim()) {
+    return res.status(400).json({ error: 'Usuario y motivo de anulacion son obligatorios.' });
+  }
+
+  const client = await db.pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const ncRes = await client.query('SELECT * FROM notas_credito WHERE id_nota_credito = $1 FOR UPDATE', [id]);
+    if (ncRes.rows.length === 0) {
+      throw new Error('Nota de credito no encontrada.');
+    }
+    const note = ncRes.rows[0];
+    if (note.estado === 'ANULADA') {
+      throw new Error('La nota de credito ya se encuentra anulada.');
+    }
+
+    const detailsRes = await client.query('SELECT * FROM nota_credito_detalles WHERE id_nota_credito = $1', [id]);
+    for (const detail of detailsRes.rows) {
+      await client.query(`
+        UPDATE productos
+        SET stock_actual = stock_actual - $1
+        WHERE id_producto = $2
+      `, [detail.cantidad, detail.id_producto]);
+
+      await client.query(`
+        INSERT INTO movimientos_inventario (id_producto, tipo, cantidad, motivo, referencia, id_usuario)
+        VALUES ($1, 'EGRESO', $2, 'NOTA_CREDITO_ANULADA', $3, $4)
+      `, [detail.id_producto, detail.cantidad, note.numero_nota_credito, id_usuario]);
+    }
+
+    await client.query(`
+      UPDATE facturas
+      SET saldo = LEAST(total, COALESCE(saldo, 0) + $1::numeric)
+      WHERE id_factura = $2
+    `, [note.total, note.id_factura]);
+
+    const updateRes = await client.query(`
+      UPDATE notas_credito
+      SET estado = 'ANULADA',
+          motivo_anulacion = $1,
+          anulada_at = CURRENT_TIMESTAMP,
+          anulada_por = $2
+      WHERE id_nota_credito = $3
+      RETURNING *
+    `, [String(reason).trim(), id_usuario, id]);
+
+    await writeAudit(client, {
+      entity: 'notas_credito',
+      entityId: id,
+      action: 'ANULAR_NOTA_CREDITO',
+      userId: id_usuario,
+      detail: { numero_nota_credito: note.numero_nota_credito, reason: String(reason).trim() },
+    });
+
+    await client.query('COMMIT');
+    res.json(updateRes.rows[0]);
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Error al anular nota de credito:', error);
+    res.status(400).json({ error: error.message || 'Error al anular la nota de credito.' });
+  } finally {
+    client.release();
+  }
+});
+
 module.exports = router;

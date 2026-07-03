@@ -15,6 +15,7 @@ export default function CashRegisterManager() {
   const [cierreBilletes, setCierreBilletes] = useState('');
   const [cierreMonedas, setCierreMonedas] = useState('');
   const [currentUser, setCurrentUser] = useState(null);
+  const [lastClosedSession, setLastClosedSession] = useState(null);
 
   useEffect(() => {
     const userStr = localStorage.getItem('user');
@@ -154,6 +155,7 @@ export default function CashRegisterManager() {
       if (!response.ok) throw new Error(result.error || 'No se pudo cerrar la caja.');
 
       showAlert('Sesion de caja cerrada y arqueada con exito.', 'success');
+      setLastClosedSession(result);
       setCierreBilletes('');
       setCierreMonedas('');
       checkSessionStatus(currentUser.id_usuario);
@@ -282,6 +284,30 @@ export default function CashRegisterManager() {
         </div>
 
         <div className="col-lg-5 mb-4">
+          {lastClosedSession && (
+            <div className="card shadow-sm border mb-3">
+              <div className="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+                <h5 className="mb-0 text-dark fw-bold">Recibo de cierre</h5>
+                <button type="button" className="btn btn-secondary btn-sm" onClick={() => window.print()}>Imprimir</button>
+              </div>
+              <div className="card-body p-3 small">
+                <div className="text-center mb-2">
+                  <strong>CIERRE DE CAJA</strong>
+                  <div>{lastClosedSession.caja_nombre || activeSession?.caja_nombre || 'Caja'}</div>
+                </div>
+                <div className="d-flex justify-content-between"><span>Apertura</span><strong>{money(lastClosedSession.monto_apertura)}</strong></div>
+                <div className="d-flex justify-content-between"><span>Ventas contado</span><strong>{money(lastClosedSession.summary?.ventas_contado)}</strong></div>
+                <div className="d-flex justify-content-between"><span>Ventas credito</span><strong>{money(lastClosedSession.summary?.ventas_credito)}</strong></div>
+                <div className="d-flex justify-content-between"><span>Cobros CxC</span><strong>{money(lastClosedSession.summary?.cobros_cxc)}</strong></div>
+                <div className="d-flex justify-content-between"><span>Notas credito</span><strong>-{money(lastClosedSession.summary?.notas_credito_total)}</strong></div>
+                <hr />
+                <div className="d-flex justify-content-between"><span>Efectivo esperado</span><strong>{money(lastClosedSession.efectivo_esperado)}</strong></div>
+                <div className="d-flex justify-content-between"><span>Conteo fisico</span><strong>{money(lastClosedSession.monto_cierre)}</strong></div>
+                <div className="d-flex justify-content-between"><span>Diferencia</span><strong>{money(lastClosedSession.diferencia_cierre)}</strong></div>
+              </div>
+            </div>
+          )}
+
           <div className="card shadow-sm border">
             <div className="card-header bg-white py-3">
               <h5 className="mb-0 text-dark fw-bold">Formas de Pago SRI</h5>

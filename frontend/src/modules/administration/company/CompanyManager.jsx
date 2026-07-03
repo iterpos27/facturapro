@@ -14,6 +14,14 @@ export default function CompanyManager() {
   const [obligadoContabilidad, setObligadoContabilidad] = useState(false);
   const [contribuyenteEspecial, setContribuyenteEspecial] = useState('');
   const [regimen, setRegimen] = useState('RIMPE');
+  const [logoUrl, setLogoUrl] = useState('');
+  const [ambienteSri, setAmbienteSri] = useState('PRUEBAS');
+  const [tipoEmision, setTipoEmision] = useState('NORMAL');
+  const [certificadoPath, setCertificadoPath] = useState('');
+  const [certificadoAlias, setCertificadoAlias] = useState('');
+  const [certificadoClave, setCertificadoClave] = useState('');
+  const [sriEndpointRecepcion, setSriEndpointRecepcion] = useState('');
+  const [sriEndpointAutorizacion, setSriEndpointAutorizacion] = useState('');
 
   useEffect(() => {
     fetchCompanyData();
@@ -33,6 +41,14 @@ export default function CompanyManager() {
         setObligadoContabilidad(data.obligado_contabilidad);
         setContribuyenteEspecial(data.contribuyente_especial || '');
         setRegimen(data.regimen || 'RIMPE');
+        setLogoUrl(data.logo_url || '');
+        setAmbienteSri(data.ambiente_sri || 'PRUEBAS');
+        setTipoEmision(data.tipo_emision || 'NORMAL');
+        setCertificadoPath(data.certificado_path || '');
+        setCertificadoAlias(data.certificado_alias || '');
+        setCertificadoClave(data.certificado_clave || '');
+        setSriEndpointRecepcion(data.sri_endpoint_recepcion || '');
+        setSriEndpointAutorizacion(data.sri_endpoint_autorizacion || '');
       }
     } catch (error) {
       console.error(error);
@@ -81,7 +97,15 @@ export default function CompanyManager() {
       direccion_matriz: direccionMatriz,
       obligado_contabilidad: obligadoContabilidad,
       contribuyente_especial: contribuyenteEspecial,
-      regimen
+      regimen,
+      logo_url: logoUrl,
+      ambiente_sri: ambienteSri,
+      tipo_emision: tipoEmision,
+      certificado_path: certificadoPath,
+      certificado_alias: certificadoAlias,
+      certificado_clave: certificadoClave,
+      sri_endpoint_recepcion: sriEndpointRecepcion,
+      sri_endpoint_autorizacion: sriEndpointAutorizacion,
     };
 
     setSaving(true);
@@ -233,6 +257,91 @@ export default function CompanyManager() {
                       value={contribuyenteEspecial}
                       onChange={(e) => setContribuyenteEspecial(e.target.value)}
                       placeholder="ej: Resolución No. 1234 (Dejar vacío si no aplica)"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="border-top pt-3 mb-3">
+                <h5 className="mb-3 text-dark fw-bold">Parametros electronicos SRI</h5>
+                <div className="row mb-3">
+                  <div className="col-md-4">
+                    <label className="form-label fw-semibold text-secondary">Logo / URL</label>
+                    <input
+                      type="text"
+                      className="form-control"
+                      value={logoUrl}
+                      onChange={(e) => setLogoUrl(e.target.value)}
+                      placeholder="https://.../logo.png"
+                    />
+                  </div>
+                  <div className="col-md-4">
+                    <label className="form-label fw-semibold text-secondary">Ambiente SRI</label>
+                    <select className="form-control" value={ambienteSri} onChange={(e) => setAmbienteSri(e.target.value)}>
+                      <option value="PRUEBAS">PRUEBAS</option>
+                      <option value="PRODUCCION">PRODUCCION</option>
+                    </select>
+                  </div>
+                  <div className="col-md-4">
+                    <label className="form-label fw-semibold text-secondary">Tipo emision</label>
+                    <select className="form-control" value={tipoEmision} onChange={(e) => setTipoEmision(e.target.value)}>
+                      <option value="NORMAL">NORMAL</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="row mb-3">
+                  <div className="col-md-5">
+                    <label className="form-label fw-semibold text-secondary">Ruta certificado firma</label>
+                    <input
+                      type="text"
+                      className="form-control"
+                      value={certificadoPath}
+                      onChange={(e) => setCertificadoPath(e.target.value)}
+                      placeholder="C:\\certificados\\firma.p12"
+                    />
+                  </div>
+                  <div className="col-md-3">
+                    <label className="form-label fw-semibold text-secondary">Alias certificado</label>
+                    <input
+                      type="text"
+                      className="form-control"
+                      value={certificadoAlias}
+                      onChange={(e) => setCertificadoAlias(e.target.value)}
+                      placeholder="Alias"
+                    />
+                  </div>
+                  <div className="col-md-4">
+                    <label className="form-label fw-semibold text-secondary">Clave certificado</label>
+                    <input
+                      type="password"
+                      className="form-control"
+                      value={certificadoClave}
+                      onChange={(e) => setCertificadoClave(e.target.value)}
+                      placeholder="Clave de firma"
+                    />
+                  </div>
+                </div>
+
+                <div className="row mb-3">
+                  <div className="col-md-6">
+                    <label className="form-label fw-semibold text-secondary">Endpoint recepcion</label>
+                    <input
+                      type="text"
+                      className="form-control"
+                      value={sriEndpointRecepcion}
+                      onChange={(e) => setSriEndpointRecepcion(e.target.value)}
+                      placeholder="URL servicio recepcion SRI"
+                    />
+                  </div>
+                  <div className="col-md-6">
+                    <label className="form-label fw-semibold text-secondary">Endpoint autorizacion</label>
+                    <input
+                      type="text"
+                      className="form-control"
+                      value={sriEndpointAutorizacion}
+                      onChange={(e) => setSriEndpointAutorizacion(e.target.value)}
+                      placeholder="URL servicio autorizacion SRI"
                     />
                   </div>
                 </div>

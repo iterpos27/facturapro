@@ -1978,3 +1978,45 @@ body[data-theme='dark'] .btn-light:hover {
     print-color-adjust: exact;
   }
 }
+
+/* Compactacion general de modulos operativos */
+.module-shell {
+  gap: 0.85rem;
+}
+
+.module-header-card {
+  padding: 0.85rem 1rem !important;
+  margin-bottom: 0.85rem !important;
+}
+
+.module-header-card h1,
+.module-header-card .h2 {
+  font-size: 1.25rem !important;
+}
+
+.client-data-panel,
+.invoice-inline-panel {
+  padding: 0.85rem !important;
+  border-radius: 6px !important;
+}
+
+.search-bar-container {
+  gap: 0.55rem !important;
+  margin-bottom: 0.75rem !important;
+}
+
+.table th,
+.table td {
+  padding-top: 0.42rem;
+  padding-bottom: 0.42rem;
+  vertical-align: middle;
+}
+
+.form-control,
+.form-select {
+  min-height: 34px;
+}
+
+.card-body.p-4 {
+  padding: 1rem !important;
+}

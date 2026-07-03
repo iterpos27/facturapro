@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
-const { authenticateToken } = require('./auth');
+const { authenticateToken, authorizeRoles } = require('./auth');
 const { writeAudit } = require('../audit');
 const { generarClaveAccesoSRI } = require('../sri_utils');
 
@@ -374,7 +374,7 @@ router.post('/', async (req, res) => {
   }
 });
 
-router.put('/:id/cancel', async (req, res) => {
+router.put('/:id/cancel', authorizeRoles('ADMINISTRADOR', 'CONTADOR'), async (req, res) => {
   const { id } = req.params;
   const { id_usuario, reason } = req.body;
 

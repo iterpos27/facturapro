@@ -102,6 +102,35 @@ export default function PurchaseManager() {
     });
   }, [purchases, searchQuery]);
 
+  const handleCancelPurchase = async (purchase) => {
+    const { value: reason } = await Swal.fire({
+      title: 'Anular compra',
+      input: 'textarea',
+      inputLabel: `Motivo para anular ${purchase.numero_factura_compra}`,
+      inputPlaceholder: 'Describe el motivo de anulacion...',
+      showCancelButton: true,
+      confirmButtonText: 'Anular',
+      cancelButtonText: 'Cancelar',
+      confirmButtonColor: '#e55353',
+    });
+    if (!reason) return;
+
+    try {
+      const response = await apiFetch(`/api/purchases/${purchase.id_compra}/cancel`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id_usuario: currentUser?.id_usuario, reason }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'No se pudo anular la compra.');
+      showAlert('Compra anulada correctamente.', 'success');
+      fetchPurchases();
+      fetchMetadata();
+    } catch (error) {
+      showAlert(error.message, 'error');
+    }
+  };
+
   // Totales de la compra en tiempo real
   const totals = useMemo(() => {
     let subtotalSinImpuestos = 0;
@@ -585,6 +614,15 @@ export default function PurchaseManager() {
                           >
                             Ver Detalle
                           </button>
+                          {purchase.estado !== 'ANULADA' && (
+                            <button
+                              className="btn btn-danger ms-1"
+                              style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}
+                              onClick={() => handleCancelPurchase(purchase)}
+                            >
+                              Anular
+                            </button>
+                          )}
                         </td>
                       </tr>
                     ))}
@@ -624,6 +662,11 @@ export default function PurchaseManager() {
                       <button className="btn btn-info text-white" onClick={() => handleOpenPurchaseDetail(purchase.id_compra)}>
                         Ver Detalle
                       </button>
+                      {purchase.estado !== 'ANULADA' && (
+                        <button className="btn btn-danger" onClick={() => handleCancelPurchase(purchase)}>
+                          Anular
+                        </button>
+                      )}
                     </div>
                   </div>
                 ))}

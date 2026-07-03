@@ -169,6 +169,35 @@ export default function WithholdingsManager() {
     }
   };
 
+  const handleCancelWithholding = async (withholding) => {
+    const { value: reason } = await Swal.fire({
+      title: 'Anular retencion',
+      input: 'textarea',
+      inputLabel: `Motivo para anular ${withholding.numero_retencion}`,
+      inputPlaceholder: 'Describe el motivo de anulacion...',
+      showCancelButton: true,
+      confirmButtonText: 'Anular',
+      cancelButtonText: 'Cancelar',
+      confirmButtonColor: '#e55353',
+    });
+    if (!reason) return;
+
+    try {
+      const response = await apiFetch(`/api/withholdings/${withholding.id_retencion}/cancel`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id_usuario: currentUser?.id_usuario, reason }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'No se pudo anular la retencion.');
+      showAlert('Retencion anulada correctamente.', 'success');
+      fetchWithholdings();
+      fetchPurchases();
+    } catch (error) {
+      showAlert(error.message, 'error');
+    }
+  };
+
   const filteredWithholdings = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
     return withholdings.filter((w) => {
@@ -489,6 +518,15 @@ export default function WithholdingsManager() {
                           >
                             Ver Detalle
                           </button>
+                          {w.estado !== 'ANULADA' && (
+                            <button
+                              className="btn btn-danger ms-1"
+                              style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}
+                              onClick={() => handleCancelWithholding(w)}
+                            >
+                              Anular
+                            </button>
+                          )}
                         </td>
                       </tr>
                     ))}
@@ -524,6 +562,11 @@ export default function WithholdingsManager() {
                       <button className="btn btn-info text-white" onClick={() => handleFetchRetDetail(w.id_retencion)}>
                         Ver Detalle
                       </button>
+                      {w.estado !== 'ANULADA' && (
+                        <button className="btn btn-danger" onClick={() => handleCancelWithholding(w)}>
+                          Anular
+                        </button>
+                      )}
                     </div>
                   </div>
                 ))}

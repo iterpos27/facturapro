@@ -149,6 +149,35 @@ export default function CreditNotesManager() {
     });
   }, [creditNotes, searchQuery]);
 
+  const handleCancelNc = async (nc) => {
+    const { value: reasonText } = await Swal.fire({
+      title: 'Anular nota de credito',
+      input: 'textarea',
+      inputLabel: `Motivo para anular ${nc.numero_nota_credito}`,
+      inputPlaceholder: 'Describe el motivo de anulacion...',
+      showCancelButton: true,
+      confirmButtonText: 'Anular',
+      cancelButtonText: 'Cancelar',
+      confirmButtonColor: '#e55353',
+    });
+    if (!reasonText) return;
+
+    try {
+      const response = await apiFetch(`/api/credit-notes/${nc.id_nota_credito}/cancel`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id_usuario: currentUser?.id_usuario, reason: reasonText }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'No se pudo anular la nota de credito.');
+      showAlert('Nota de credito anulada correctamente.', 'success');
+      fetchCreditNotes();
+      fetchInvoices();
+    } catch (error) {
+      showAlert(error.message, 'error');
+    }
+  };
+
   // Totales de la Nota de Crédito en tiempo real
   const totals = useMemo(() => {
     let subtotalSinImpuestos = 0;
@@ -462,6 +491,15 @@ export default function CreditNotesManager() {
                           >
                             Ver Detalle
                           </button>
+                          {nc.estado !== 'ANULADA' && (
+                            <button
+                              className="btn btn-danger ms-1"
+                              style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}
+                              onClick={() => handleCancelNc(nc)}
+                            >
+                              Anular
+                            </button>
+                          )}
                         </td>
                       </tr>
                     ))}
@@ -497,6 +535,11 @@ export default function CreditNotesManager() {
                       <button className="btn btn-info text-white" onClick={() => handleFetchNcDetail(nc.id_nota_credito)}>
                         Ver Detalle
                       </button>
+                      {nc.estado !== 'ANULADA' && (
+                        <button className="btn btn-danger" onClick={() => handleCancelNc(nc)}>
+                          Anular
+                        </button>
+                      )}
                     </div>
                   </div>
                 ))}

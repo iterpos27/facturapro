@@ -159,4 +159,77 @@ router.post('/', async (req, res) => {
   }
 });
 
+router.put('/:id/cancel', async (req, res) => {
+  const { id } = req.params;
+  const { id_usuario, reason } = req.body || {};
+
+  if (!id_usuario || !String(reason || '').trim()) {
+    return res.status(400).json({ error: 'Usuario y motivo de anulacion son obligatorios.' });
+  }
+
+  const client = await db.pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const purchaseRes = await client.query('SELECT * FROM compras WHERE id_compra = $1 FOR UPDATE', [id]);
+    if (purchaseRes.rows.length === 0) {
+      throw new Error('Compra no encontrada.');
+    }
+    const purchase = purchaseRes.rows[0];
+    if (purchase.estado === 'ANULADA') {
+      throw new Error('La compra ya se encuentra anulada.');
+    }
+
+    const activeWithholding = await client.query(
+      "SELECT id_retencion FROM retenciones WHERE id_compra = $1 AND estado = 'EMITIDA' LIMIT 1",
+      [id]
+    ).catch((error) => (error.code === '42P01' ? { rows: [] } : Promise.reject(error)));
+    if (activeWithholding.rows.length > 0) {
+      throw new Error('Primero anula la retencion asociada a esta compra.');
+    }
+
+    const detailsRes = await client.query('SELECT * FROM compra_detalles WHERE id_compra = $1', [id]);
+    for (const detail of detailsRes.rows) {
+      await client.query(`
+        UPDATE productos
+        SET stock_actual = stock_actual - $1,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id_producto = $2
+      `, [detail.cantidad, detail.id_producto]);
+
+      await client.query(`
+        INSERT INTO movimientos_inventario (id_producto, tipo, cantidad, motivo, referencia, id_usuario)
+        VALUES ($1, 'EGRESO', $2, 'COMPRA_ANULADA', $3, $4)
+      `, [detail.id_producto, detail.cantidad, purchase.numero_factura_compra, id_usuario]);
+    }
+
+    const updateRes = await client.query(`
+      UPDATE compras
+      SET estado = 'ANULADA',
+          motivo_anulacion = $1,
+          anulada_at = CURRENT_TIMESTAMP,
+          anulada_por = $2
+      WHERE id_compra = $3
+      RETURNING *
+    `, [String(reason).trim(), id_usuario, id]);
+
+    await writeAudit(client, {
+      entity: 'compras',
+      entityId: id,
+      action: 'ANULAR_COMPRA',
+      userId: id_usuario,
+      detail: { numero_factura_compra: purchase.numero_factura_compra, reason: String(reason).trim() },
+    });
+
+    await client.query('COMMIT');
+    res.json(updateRes.rows[0]);
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Error al anular compra:', error);
+    res.status(400).json({ error: error.message || 'Error al anular la compra.' });
+  } finally {
+    client.release();
+  }
+});
+
 module.exports = router;

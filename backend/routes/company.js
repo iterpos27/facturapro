@@ -24,7 +24,23 @@ router.get('/', async (req, res) => {
 
 // 2. Guardar o actualizar datos de la empresa (POST /api/company)
 router.post('/', async (req, res) => {
-  const { ruc, razon_social, nombre_comercial, direccion_matriz, obligado_contabilidad, contribuyente_especial, regimen } = req.body;
+  const {
+    ruc,
+    razon_social,
+    nombre_comercial,
+    direccion_matriz,
+    obligado_contabilidad,
+    contribuyente_especial,
+    regimen,
+    logo_url,
+    ambiente_sri,
+    tipo_emision,
+    certificado_path,
+    certificado_alias,
+    certificado_clave,
+    sri_endpoint_recepcion,
+    sri_endpoint_autorizacion,
+  } = req.body;
 
   if (!ruc || !razon_social || !direccion_matriz) {
     return res.status(400).json({ error: 'El RUC, Razón Social y Dirección Matriz son obligatorios.' });
@@ -40,19 +56,40 @@ router.post('/', async (req, res) => {
       const companyId = checkCompany.rows[0].id_empresa;
       result = await db.query(
         `UPDATE empresas 
-         SET ruc = $1, razon_social = $2, nombre_comercial = $3, direccion_matriz = $4, 
-             obligado_contabilidad = $5, contribuyente_especial = $6, regimen = $7, updated_at = CURRENT_TIMESTAMP
-         WHERE id_empresa = $8
+         SET ruc = $1, razon_social = $2, nombre_comercial = $3, direccion_matriz = $4,
+             obligado_contabilidad = $5, contribuyente_especial = $6, regimen = $7,
+             logo_url = $8, ambiente_sri = $9, tipo_emision = $10, certificado_path = $11,
+             certificado_alias = $12, certificado_clave = $13,
+             sri_endpoint_recepcion = $14, sri_endpoint_autorizacion = $15,
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id_empresa = $16
          RETURNING *`,
-        [ruc, razon_social, nombre_comercial, direccion_matriz, obligado_contabilidad, contribuyente_especial, regimen, companyId]
+        [
+          ruc, razon_social, nombre_comercial, direccion_matriz,
+          obligado_contabilidad, contribuyente_especial, regimen,
+          logo_url || '', ambiente_sri || 'PRUEBAS', tipo_emision || 'NORMAL',
+          certificado_path || '', certificado_alias || '', certificado_clave || '',
+          sri_endpoint_recepcion || '', sri_endpoint_autorizacion || '', companyId,
+        ]
       );
     } else {
       // Insertar nuevo registro
       result = await db.query(
-        `INSERT INTO empresas (ruc, razon_social, nombre_comercial, direccion_matriz, obligado_contabilidad, contribuyente_especial, regimen)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)
+        `INSERT INTO empresas (
+          ruc, razon_social, nombre_comercial, direccion_matriz, obligado_contabilidad,
+          contribuyente_especial, regimen, logo_url, ambiente_sri, tipo_emision,
+          certificado_path, certificado_alias, certificado_clave,
+          sri_endpoint_recepcion, sri_endpoint_autorizacion
+        )
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
          RETURNING *`,
-        [ruc, razon_social, nombre_comercial, direccion_matriz, obligado_contabilidad, contribuyente_especial, regimen]
+        [
+          ruc, razon_social, nombre_comercial, direccion_matriz,
+          obligado_contabilidad, contribuyente_especial, regimen,
+          logo_url || '', ambiente_sri || 'PRUEBAS', tipo_emision || 'NORMAL',
+          certificado_path || '', certificado_alias || '', certificado_clave || '',
+          sri_endpoint_recepcion || '', sri_endpoint_autorizacion || '',
+        ]
       );
     }
 

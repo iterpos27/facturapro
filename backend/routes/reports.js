@@ -2,8 +2,45 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 
+const addParam = (params, value) => {
+  params.push(value);
+  return `$${params.length}`;
+};
+
+const buildFilters = (query, alias = 'f') => {
+  const params = [];
+  const where = [];
+
+  if (query.date_from) {
+    where.push(`${alias}.fecha_emision >= ${addParam(params, query.date_from)}`);
+  }
+  if (query.date_to) {
+    where.push(`${alias}.fecha_emision < (${addParam(params, query.date_to)}::date + INTERVAL '1 day')`);
+  }
+  if (query.id_usuario) {
+    where.push(`${alias}.id_usuario = ${addParam(params, Number(query.id_usuario))}`);
+  }
+  if (query.id_caja) {
+    where.push(`${alias}.id_sesion_caja IN (SELECT id_sesion FROM sesiones_caja WHERE id_caja = ${addParam(params, Number(query.id_caja))})`);
+  }
+  if (query.id_cliente) {
+    where.push(`${alias}.id_cliente = ${addParam(params, Number(query.id_cliente))}`);
+  }
+
+  return { params, clause: where.length ? `WHERE ${where.join(' AND ')}` : '' };
+};
+
 router.get('/summary', async (req, res) => {
   try {
+    const invoiceFilter = buildFilters(req.query, 'f');
+    const purchaseParams = [];
+    const purchaseWhere = [];
+    if (req.query.date_from) purchaseWhere.push(`c.fecha_compra >= ${addParam(purchaseParams, req.query.date_from)}`);
+    if (req.query.date_to) purchaseWhere.push(`c.fecha_compra < (${addParam(purchaseParams, req.query.date_to)}::date + INTERVAL '1 day')`);
+    if (req.query.id_usuario) purchaseWhere.push(`c.id_usuario = ${addParam(purchaseParams, Number(req.query.id_usuario))}`);
+    if (req.query.id_proveedor) purchaseWhere.push(`c.id_proveedor = ${addParam(purchaseParams, Number(req.query.id_proveedor))}`);
+    const purchaseClause = purchaseWhere.length ? `WHERE ${purchaseWhere.join(' AND ')}` : '';
+
     const [
       invoiceTotals,
       proformaStatuses,
@@ -20,12 +57,13 @@ router.get('/summary', async (req, res) => {
     ] = await Promise.all([
       db.query(`
         SELECT
-          COUNT(*) FILTER (WHERE estado = 'EMITIDA') AS facturas_emitidas,
-          COUNT(*) FILTER (WHERE estado = 'ANULADA') AS facturas_anuladas,
-          COALESCE(SUM(total) FILTER (WHERE estado = 'EMITIDA'), 0) AS total_facturado,
-          COALESCE(SUM(saldo) FILTER (WHERE estado = 'EMITIDA'), 0) AS saldo_pendiente
-        FROM facturas
-      `),
+          COUNT(*) FILTER (WHERE f.estado = 'EMITIDA') AS facturas_emitidas,
+          COUNT(*) FILTER (WHERE f.estado = 'ANULADA') AS facturas_anuladas,
+          COALESCE(SUM(f.total) FILTER (WHERE f.estado = 'EMITIDA'), 0) AS total_facturado,
+          COALESCE(SUM(f.saldo) FILTER (WHERE f.estado = 'EMITIDA'), 0) AS saldo_pendiente
+        FROM facturas f
+        ${invoiceFilter.clause}
+      `, invoiceFilter.params),
       db.query(`
         SELECT estado, COUNT(*) AS cantidad, COALESCE(SUM(total), 0) AS total
         FROM proformas
@@ -33,34 +71,34 @@ router.get('/summary', async (req, res) => {
         ORDER BY estado
       `),
       db.query(`
-        SELECT DATE(fecha_emision) AS fecha,
+        SELECT DATE(f.fecha_emision) AS fecha,
                COUNT(*) AS facturas,
-               COALESCE(SUM(total) FILTER (WHERE estado = 'EMITIDA'), 0) AS total
-        FROM facturas
-        WHERE fecha_emision >= CURRENT_DATE - INTERVAL '7 days'
-        GROUP BY DATE(fecha_emision)
+               COALESCE(SUM(f.total) FILTER (WHERE f.estado = 'EMITIDA'), 0) AS total
+        FROM facturas f
+        ${invoiceFilter.clause || "WHERE f.fecha_emision >= CURRENT_DATE - INTERVAL '7 days'"}
+        GROUP BY DATE(f.fecha_emision)
         ORDER BY fecha DESC
-      `),
+      `, invoiceFilter.params),
       db.query(`
         SELECT p.codigo, p.nombre, COALESCE(SUM(fd.cantidad), 0) AS cantidad,
                COALESCE(SUM(fd.precio_total + fd.valor_iva - COALESCE(fd.descuento_total, fd.descuento, 0)), 0) AS total
         FROM factura_detalles fd
         JOIN facturas f ON fd.id_factura = f.id_factura
         JOIN productos p ON fd.id_producto = p.id_producto
-        WHERE f.estado = 'EMITIDA'
+        ${invoiceFilter.clause ? `${invoiceFilter.clause} AND f.estado = 'EMITIDA'` : "WHERE f.estado = 'EMITIDA'"}
         GROUP BY p.codigo, p.nombre
         ORDER BY cantidad DESC
         LIMIT 10
-      `),
+      `, invoiceFilter.params),
       db.query(`
         SELECT f.id_factura, f.numero_factura, f.fecha_emision, c.name AS cliente_nombre,
                c.identification_number AS cliente_identificacion, f.total, f.saldo
         FROM facturas f
         JOIN clients c ON f.id_cliente = c.id
-        WHERE f.estado = 'EMITIDA' AND COALESCE(f.saldo, 0) > 0
+        ${invoiceFilter.clause ? `${invoiceFilter.clause} AND f.estado = 'EMITIDA' AND COALESCE(f.saldo, 0) > 0` : "WHERE f.estado = 'EMITIDA' AND COALESCE(f.saldo, 0) > 0"}
         ORDER BY f.fecha_emision DESC
         LIMIT 20
-      `),
+      `, invoiceFilter.params),
       db.query(`
         SELECT codigo, nombre, stock_actual, stock_minimo
         FROM productos
@@ -73,59 +111,42 @@ router.get('/summary', async (req, res) => {
         FROM factura_pagos fp
         JOIN facturas f ON fp.id_factura = f.id_factura
         LEFT JOIN metodos_pago mp ON fp.id_metodo_pago = mp.id_metodo
-        WHERE f.estado = 'EMITIDA'
+        ${invoiceFilter.clause ? `${invoiceFilter.clause} AND f.estado = 'EMITIDA'` : "WHERE f.estado = 'EMITIDA'"}
         GROUP BY mp.nombre
         ORDER BY total DESC
-      `).catch((error) => {
-        if (error.code === '42P01') {
-          return { rows: [] };
-        }
-        throw error;
-      }),
+      `, invoiceFilter.params).catch((error) => (error.code === '42P01' ? { rows: [] } : Promise.reject(error))),
       db.query(`
         SELECT ae.*, u.username
         FROM auditoria_eventos ae
         LEFT JOIN usuarios u ON ae.id_usuario = u.id_usuario
         ORDER BY ae.created_at DESC
         LIMIT 25
-      `).catch((error) => {
-        if (error.code === '42P01') {
-          return { rows: [] };
-        }
-        throw error;
-      }),
+      `).catch((error) => (error.code === '42P01' ? { rows: [] } : Promise.reject(error))),
       db.query(`
         SELECT COUNT(*) AS compras, COALESCE(SUM(total), 0) AS total_compras
-        FROM compras
-        WHERE estado = 'REGISTRADA'
-      `).catch((error) => {
-        if (error.code === '42P01') return { rows: [{ compras: 0, total_compras: 0 }] };
-        throw error;
-      }),
+        FROM compras c
+        ${purchaseClause ? `${purchaseClause} AND c.estado = 'REGISTRADA'` : "WHERE c.estado = 'REGISTRADA'"}
+      `, purchaseParams).catch((error) => (error.code === '42P01' ? { rows: [{ compras: 0, total_compras: 0 }] } : Promise.reject(error))),
       db.query(`
-        SELECT COUNT(*) AS notas_credito, COALESCE(SUM(total), 0) AS total_notas_credito
-        FROM notas_credito
-        WHERE estado = 'EMITIDA'
-      `).catch((error) => {
-        if (error.code === '42P01') return { rows: [{ notas_credito: 0, total_notas_credito: 0 }] };
-        throw error;
-      }),
+        SELECT COUNT(*) AS notas_credito, COALESCE(SUM(nc.total), 0) AS total_notas_credito
+        FROM notas_credito nc
+        JOIN facturas f ON nc.id_factura = f.id_factura
+        ${invoiceFilter.clause ? `${invoiceFilter.clause} AND nc.estado = 'EMITIDA'` : "WHERE nc.estado = 'EMITIDA'"}
+      `, invoiceFilter.params).catch((error) => (error.code === '42P01' ? { rows: [{ notas_credito: 0, total_notas_credito: 0 }] } : Promise.reject(error))),
       db.query(`
         SELECT COUNT(*) AS retenciones, COALESCE(SUM(rd.valor_retenido), 0) AS total_retenido
         FROM retenciones r
         LEFT JOIN retencion_detalles rd ON r.id_retencion = rd.id_retencion
-        WHERE r.estado = 'EMITIDA'
-      `).catch((error) => {
-        if (error.code === '42P01') return { rows: [{ retenciones: 0, total_retenido: 0 }] };
-        throw error;
-      }),
+        LEFT JOIN compras c ON r.id_compra = c.id_compra
+        ${purchaseClause ? `${purchaseClause} AND r.estado = 'EMITIDA'` : "WHERE r.estado = 'EMITIDA'"}
+      `, purchaseParams).catch((error) => (error.code === '42P01' ? { rows: [{ retenciones: 0, total_retenido: 0 }] } : Promise.reject(error))),
       db.query(`
         SELECT COALESCE(SUM((fd.precio_unitario - COALESCE(p.precio_compra, 0)) * fd.cantidad), 0) AS utilidad_estimada
         FROM factura_detalles fd
         JOIN facturas f ON fd.id_factura = f.id_factura
         JOIN productos p ON fd.id_producto = p.id_producto
-        WHERE f.estado = 'EMITIDA'
-      `),
+        ${invoiceFilter.clause ? `${invoiceFilter.clause} AND f.estado = 'EMITIDA'` : "WHERE f.estado = 'EMITIDA'"}
+      `, invoiceFilter.params),
     ]);
 
     res.json({

@@ -19,6 +19,7 @@
     "db:migrate:receivables": "node migrations/migrate_phase9_receivables.js",
     "db:migrate:complementary": "node migrations/migrate_phase9_complementary.js",
     "db:migrate:cash-denominations": "node migrations/migrate_phase10_cash_denominations.js",
+    "db:migrate:professional-finish": "node migrations/migrate_phase11_professional_finish.js",
     "db:drop": "node migrations/migrate_drop.js",
     "db:productos": "node migrations/create_productos_table.js"
   },
