@@ -1,6 +1,11 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
+const { authenticateToken, authorizeRoles } = require('./auth');
+
+// Proteger todas las rutas de auditoría con autenticación y autorización
+router.use(authenticateToken);
+router.use(authorizeRoles('ADMINISTRADOR', 'CONTADOR'));
 
 router.get('/', async (req, res) => {
   const limit = Math.min(parseInt(req.query.limit || '80', 10), 200);

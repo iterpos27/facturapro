@@ -10,6 +10,11 @@ const {
   sendReceipt,
   authorizeReceipt,
 } = require('../sri_service');
+const { authenticateToken, authorizeRoles } = require('./auth');
+
+// Proteger todas las rutas de SRI con autenticación y autorización
+router.use(authenticateToken);
+router.use(authorizeRoles('ADMINISTRADOR', 'CONTADOR'));
 
 const getCurrentUserId = (req) => req.user?.id_usuario || req.user?.id || null;
 

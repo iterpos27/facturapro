@@ -3,6 +3,10 @@ const bcrypt = require('bcryptjs');
 const router = express.Router();
 const db = require('../db');
 const { writeAudit } = require('../audit');
+const { authenticateToken } = require('./auth');
+
+// Proteger todas las rutas de proformas con autenticación
+router.use(authenticateToken);
 
 const formatTransactionNumber = (value) => String(Number(value) || 0).padStart(6, '0');
 const formatProformaNumber = (transactionNumber) => formatTransactionNumber(transactionNumber);

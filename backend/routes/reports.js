@@ -1,6 +1,11 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
+const { authenticateToken, authorizeRoles } = require('./auth');
+
+// Proteger todas las rutas de reportes con autenticación y autorización
+router.use(authenticateToken);
+router.use(authorizeRoles('ADMINISTRADOR', 'CONTADOR'));
 
 const addParam = (params, value) => {
   params.push(value);

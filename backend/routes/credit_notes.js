@@ -3,6 +3,11 @@ const router = express.Router();
 const db = require('../db');
 const { writeAudit } = require('../audit');
 const { generarClaveAccesoSRI } = require('../sri_utils');
+const { authenticateToken, authorizeRoles } = require('./auth');
+
+// Proteger todas las rutas de notas de crédito con autenticación y autorización
+router.use(authenticateToken);
+router.use(authorizeRoles('ADMINISTRADOR', 'CONTADOR'));
 
 router.get('/', async (req, res) => {
   try {

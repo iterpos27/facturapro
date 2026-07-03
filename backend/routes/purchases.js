@@ -2,6 +2,11 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 const { writeAudit } = require('../audit');
+const { authenticateToken, authorizeRoles } = require('./auth');
+
+// Proteger todas las rutas de compras con autenticación y autorización
+router.use(authenticateToken);
+router.use(authorizeRoles('ADMINISTRADOR', 'CONTADOR'));
 
 // 1. Obtener listado de compras (GET /api/purchases)
 router.get('/', async (req, res) => {
