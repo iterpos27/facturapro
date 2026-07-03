@@ -161,9 +161,48 @@ export default function CompanyManager() {
     }
   };
 
+  const saveCurrentCompanyBeforeSriCheck = async () => {
+    if (!ruc.trim() || ruc.length !== 13) {
+      throw new Error('El RUC debe tener exactamente 13 digitos.');
+    }
+
+    if (!razonSocial.trim() || !direccionMatriz.trim()) {
+      throw new Error('La razon social y la direccion matriz son obligatorias.');
+    }
+
+    const response = await apiFetch('/api/company', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        ruc,
+        razon_social: razonSocial,
+        nombre_comercial: nombreComercial,
+        direccion_matriz: direccionMatriz,
+        obligado_contabilidad: obligadoContabilidad,
+        contribuyente_especial: contribuyenteEspecial,
+        regimen,
+        logo_url: logoUrl,
+        ambiente_sri: ambienteSri,
+        tipo_emision: tipoEmision,
+        certificado_path: certificadoPath,
+        certificado_alias: certificadoAlias,
+        certificado_clave: certificadoClave,
+        sri_endpoint_recepcion: sriEndpointRecepcion,
+        sri_endpoint_autorizacion: sriEndpointAutorizacion,
+      }),
+    });
+
+    const result = await readApiResponse(response);
+    if (!response.ok) throw new Error(result.error || 'No se pudo guardar la configuracion.');
+    return result;
+  };
+
   const handleCheckSriReadiness = async () => {
     setCheckingSri(true);
     try {
+      await saveCurrentCompanyBeforeSriCheck();
       const response = await apiFetch('/api/sri/readiness-test');
       const result = await readApiResponse(response);
       setSriChecks(result.checks || []);
@@ -422,7 +461,7 @@ export default function CompanyManager() {
                   <div className="d-flex justify-content-between align-items-center gap-2">
                     <div>
                       <strong>Validacion SRI pruebas</strong>
-                      <div className="small text-muted">Confirma empresa, endpoints y certificado antes de procesar facturas.</div>
+                      <div className="small text-muted">Guarda los datos actuales y confirma endpoints/certificado antes de procesar facturas.</div>
                     </div>
                     <button
                       type="button"
@@ -430,7 +469,7 @@ export default function CompanyManager() {
                       onClick={handleCheckSriReadiness}
                       disabled={checkingSri}
                     >
-                      {checkingSri ? 'Validando...' : 'Validar SRI pruebas'}
+                      {checkingSri ? 'Validando...' : 'Guardar y validar'}
                     </button>
                   </div>
                   {sriChecks.length > 0 && (
