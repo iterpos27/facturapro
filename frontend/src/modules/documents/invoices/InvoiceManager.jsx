@@ -302,6 +302,43 @@ export default function InvoiceManager({ onRedirectToCash }) {
     }
   };
 
+  const handleProcessSriTest = async (id) => {
+    try {
+      const response = await apiFetch(`/api/sri/invoices/${id}/process-test`, {
+        method: 'POST',
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'No se pudo procesar la factura en SRI pruebas.');
+
+      const messages = Array.isArray(data.mensajes) && data.mensajes.length > 0
+        ? data.mensajes.map((msg) => `<li>${msg.tipo || ''} ${msg.mensaje || ''} ${msg.informacionAdicional || ''}</li>`).join('')
+        : '<li>Sin mensajes.</li>';
+
+      await Swal.fire({
+        title: 'SRI Pruebas',
+        html: `
+          <div style="text-align:left">
+            <p><strong>Estado:</strong> ${data.estado}</p>
+            <p><strong>Ambiente:</strong> ${data.ambiente}</p>
+            <p style="word-break:break-all"><strong>Clave:</strong><br>${data.clave_acceso}</p>
+            ${data.numero_autorizacion ? `<p style="word-break:break-all"><strong>Autorizacion:</strong><br>${data.numero_autorizacion}</p>` : ''}
+            <ul>${messages}</ul>
+          </div>
+        `,
+        icon: data.estado === 'AUTORIZADO' ? 'success' : 'info',
+        confirmButtonText: 'OK',
+        confirmButtonColor: '#198754',
+        customClass: {
+          popup: 'swal-custom-popup',
+          confirmButton: 'btn btn-primary',
+        },
+      });
+      fetchInvoices();
+    } catch (error) {
+      showAlert(error.message, 'error');
+    }
+  };
+
   const handleClearFilters = () => {
     setListQuery('');
     setStatusFilter('ALL');
@@ -371,6 +408,7 @@ export default function InvoiceManager({ onRedirectToCash }) {
               onViewRide={handleFetchInvoiceDetail}
               onCancel={handleCancelInvoice}
               onGenerateSriTestXml={handleGenerateSriTestXml}
+              onProcessSriTest={handleProcessSriTest}
             />
           )}
         </>

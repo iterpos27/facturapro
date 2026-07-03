@@ -8,12 +8,20 @@ const getStatusBadgeClass = (status) => {
 
 const getSriBadgeClass = (status) => {
   if (status === 'GENERADO') return 'bg-primary';
+  if (status === 'FIRMADO') return 'bg-info';
+  if (status === 'RECIBIDO') return 'bg-warning';
   if (status === 'AUTORIZADO') return 'bg-success';
-  if (status === 'DEVUELTO' || status === 'ERROR') return 'bg-danger';
+  if (status === 'DEVUELTO' || status === 'ERROR' || status === 'NO_AUTORIZADO') return 'bg-danger';
   return 'bg-secondary';
 };
 
-export default function InvoiceTable({ invoices, onViewRide, onCancel, onGenerateSriTestXml }) {
+export default function InvoiceTable({
+  invoices,
+  onViewRide,
+  onCancel,
+  onGenerateSriTestXml,
+  onProcessSriTest,
+}) {
   if (invoices.length === 0) {
     return (
       <p className="module-empty-state">
@@ -35,7 +43,7 @@ export default function InvoiceTable({ invoices, onViewRide, onCancel, onGenerat
               <th>Saldo</th>
               <th>Estado</th>
               <th>SRI</th>
-              <th style={{ width: '260px' }}>Acciones</th>
+              <th style={{ width: '340px' }}>Acciones</th>
             </tr>
           </thead>
           <tbody>
@@ -78,6 +86,13 @@ export default function InvoiceTable({ invoices, onViewRide, onCancel, onGenerat
                           onClick={() => onGenerateSriTestXml(invoice.id_factura)}
                         >
                           XML SRI
+                        </button>
+                        <button
+                          className="btn btn-success"
+                          style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}
+                          onClick={() => onProcessSriTest(invoice.id_factura)}
+                        >
+                          Procesar SRI
                         </button>
                         <button
                           className="btn btn-danger"
@@ -138,6 +153,9 @@ export default function InvoiceTable({ invoices, onViewRide, onCancel, onGenerat
                 <>
                   <button className="btn btn-warning" onClick={() => onGenerateSriTestXml(invoice.id_factura)}>
                     XML SRI
+                  </button>
+                  <button className="btn btn-success" onClick={() => onProcessSriTest(invoice.id_factura)}>
+                    Procesar SRI
                   </button>
                   <button
                     className="btn btn-danger"
