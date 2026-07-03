@@ -271,6 +271,37 @@ export default function InvoiceManager({ onRedirectToCash }) {
     }
   };
 
+  const handleGenerateSriTestXml = async (id) => {
+    try {
+      const response = await apiFetch(`/api/sri/invoices/${id}/generate-test-xml`, {
+        method: 'POST',
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'No se pudo generar el XML SRI.');
+
+      await Swal.fire({
+        title: 'XML SRI generado',
+        html: `
+          <div style="text-align:left">
+            <p><strong>Ambiente:</strong> ${data.ambiente}</p>
+            <p><strong>Estado:</strong> ${data.estado}</p>
+            <p style="word-break:break-all"><strong>Clave de acceso:</strong><br>${data.clave_acceso}</p>
+          </div>
+        `,
+        icon: 'success',
+        confirmButtonText: 'OK',
+        confirmButtonColor: '#198754',
+        customClass: {
+          popup: 'swal-custom-popup',
+          confirmButton: 'btn btn-primary',
+        },
+      });
+      fetchInvoices();
+    } catch (error) {
+      showAlert(error.message, 'error');
+    }
+  };
+
   const handleClearFilters = () => {
     setListQuery('');
     setStatusFilter('ALL');
@@ -339,6 +370,7 @@ export default function InvoiceManager({ onRedirectToCash }) {
               invoices={filteredInvoices}
               onViewRide={handleFetchInvoiceDetail}
               onCancel={handleCancelInvoice}
+              onGenerateSriTestXml={handleGenerateSriTestXml}
             />
           )}
         </>

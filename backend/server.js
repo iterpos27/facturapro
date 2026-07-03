@@ -45,6 +45,7 @@ const purchaseRoutes = require('./routes/purchases');
 const creditNotesRoutes = require('./routes/credit_notes');
 const withholdingsRoutes = require('./routes/withholdings');
 const auditRoutes = require('./routes/audit');
+const sriRoutes = require('./routes/sri');
 
 app.use('/api/auth', authRoutes);
 app.use('/api/clients', authenticateToken, clientRoutes);
@@ -61,6 +62,7 @@ app.use('/api/proformas', authenticateToken, proformaRoutes);
 app.use('/api/sequentials', authenticateToken, authorizeRoles('ADMINISTRADOR'), sequentialRoutes);
 app.use('/api/reports', authenticateToken, authorizeRoles('ADMINISTRADOR', 'CONTADOR'), reportRoutes);
 app.use('/api/audit', authenticateToken, authorizeRoles('ADMINISTRADOR', 'CONTADOR'), auditRoutes);
+app.use('/api/sri', authenticateToken, authorizeRoles('ADMINISTRADOR', 'CONTADOR'), sriRoutes);
 app.use('/api/purchases', authenticateToken, authorizeRoles('ADMINISTRADOR', 'CONTADOR'), purchaseRoutes);
 app.use('/api/credit-notes', authenticateToken, authorizeRoles('ADMINISTRADOR', 'CONTADOR'), creditNotesRoutes);
 app.use('/api/withholdings', authenticateToken, authorizeRoles('ADMINISTRADOR', 'CONTADOR'), withholdingsRoutes);

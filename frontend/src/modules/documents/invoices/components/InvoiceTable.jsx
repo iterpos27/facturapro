@@ -6,29 +6,36 @@ const getStatusBadgeClass = (status) => {
   return 'bg-secondary';
 };
 
-export default function InvoiceTable({ invoices, onViewRide, onCancel }) {
+const getSriBadgeClass = (status) => {
+  if (status === 'GENERADO') return 'bg-primary';
+  if (status === 'AUTORIZADO') return 'bg-success';
+  if (status === 'DEVUELTO' || status === 'ERROR') return 'bg-danger';
+  return 'bg-secondary';
+};
+
+export default function InvoiceTable({ invoices, onViewRide, onCancel, onGenerateSriTestXml }) {
   if (invoices.length === 0) {
     return (
       <p className="module-empty-state">
-        Aún no hay comprobantes emitidos. Crea el primero para registrar una venta.
+        Aun no hay comprobantes emitidos. Crea el primero para registrar una venta.
       </p>
     );
   }
 
   return (
     <div>
-      {/* Desktop Table View */}
       <div className="table-responsive desktop-only">
         <table className="table table-striped table-hover align-middle border">
           <thead className="table-light">
             <tr>
               <th>No. Factura</th>
               <th>Cliente</th>
-              <th>Fecha Emisión</th>
+              <th>Fecha Emision</th>
               <th>Monto</th>
               <th>Saldo</th>
               <th>Estado</th>
-              <th style={{ width: '180px' }}>Acciones</th>
+              <th>SRI</th>
+              <th style={{ width: '260px' }}>Acciones</th>
             </tr>
           </thead>
           <tbody>
@@ -50,7 +57,12 @@ export default function InvoiceTable({ invoices, onViewRide, onCancel }) {
                   </span>
                 </td>
                 <td>
-                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  <span className={`badge ${getSriBadgeClass(invoice.sri_estado)}`}>
+                    {invoice.sri_estado || 'PENDIENTE'}
+                  </span>
+                </td>
+                <td>
+                  <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
                     <button
                       className="btn btn-info text-white"
                       style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}
@@ -59,13 +71,22 @@ export default function InvoiceTable({ invoices, onViewRide, onCancel }) {
                       Ver RIDE
                     </button>
                     {invoice.estado !== 'ANULADA' && (
-                      <button
-                        className="btn btn-danger"
-                        style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}
-                        onClick={() => onCancel(invoice.id_factura, invoice.numero_factura)}
-                      >
-                        Anular
-                      </button>
+                      <>
+                        <button
+                          className="btn btn-warning"
+                          style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}
+                          onClick={() => onGenerateSriTestXml(invoice.id_factura)}
+                        >
+                          XML SRI
+                        </button>
+                        <button
+                          className="btn btn-danger"
+                          style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}
+                          onClick={() => onCancel(invoice.id_factura, invoice.numero_factura)}
+                        >
+                          Anular
+                        </button>
+                      </>
                     )}
                   </div>
                 </td>
@@ -75,7 +96,6 @@ export default function InvoiceTable({ invoices, onViewRide, onCancel }) {
         </table>
       </div>
 
-      {/* Mobile Card View */}
       <div className="client-cards-container mobile-only">
         {invoices.map((invoice) => (
           <div key={invoice.id_factura} className="client-mobile-card">
@@ -102,8 +122,12 @@ export default function InvoiceTable({ invoices, onViewRide, onCancel }) {
                 </span>
               </div>
               <div className="client-card-info-item">
-                <span className="info-label">Fecha Emisión:</span>
+                <span className="info-label">Fecha Emision:</span>
                 <span className="info-val">{new Date(invoice.fecha_emision).toLocaleDateString()}</span>
+              </div>
+              <div className="client-card-info-item">
+                <span className="info-label">SRI:</span>
+                <span className="info-val">{invoice.sri_estado || 'PENDIENTE'}</span>
               </div>
             </div>
             <div className="client-card-actions">
@@ -111,12 +135,17 @@ export default function InvoiceTable({ invoices, onViewRide, onCancel }) {
                 Ver RIDE
               </button>
               {invoice.estado !== 'ANULADA' && (
-                <button
-                  className="btn btn-danger"
-                  onClick={() => onCancel(invoice.id_factura, invoice.numero_factura)}
-                >
-                  Anular
-                </button>
+                <>
+                  <button className="btn btn-warning" onClick={() => onGenerateSriTestXml(invoice.id_factura)}>
+                    XML SRI
+                  </button>
+                  <button
+                    className="btn btn-danger"
+                    onClick={() => onCancel(invoice.id_factura, invoice.numero_factura)}
+                  >
+                    Anular
+                  </button>
+                </>
               )}
             </div>
           </div>
