@@ -228,7 +228,7 @@ export default function InventoryManager() {
 
           {loadingKardex && <p className="small text-muted mb-0 mt-2">Consultando kardex...</p>}
           {kardexData && (
-            <div className="mt-3">
+            <div className="mt-3 print-document">
               <div className="d-flex justify-content-between flex-wrap gap-2 mb-2">
                 <strong>{kardexData.product.codigo} - {kardexData.product.nombre}</strong>
                 <span>Stock actual: <strong>{Number(kardexData.product.stock_actual || 0).toFixed(2)}</strong></span>

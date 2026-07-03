@@ -9,7 +9,7 @@ export default function InvoiceRideModal({ viewInvoice, onClose }) {
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div
-        className="modal-container text-dark"
+        className="modal-container text-dark print-document"
         style={{
           maxWidth: '900px',
           width: '95%',

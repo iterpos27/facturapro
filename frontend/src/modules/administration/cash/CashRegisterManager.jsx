@@ -285,7 +285,7 @@ export default function CashRegisterManager() {
 
         <div className="col-lg-5 mb-4">
           {lastClosedSession && (
-            <div className="card shadow-sm border mb-3">
+            <div className="card shadow-sm border mb-3 print-document">
               <div className="card-header bg-white py-3 d-flex justify-content-between align-items-center">
                 <h5 className="mb-0 text-dark fw-bold">Recibo de cierre</h5>
                 <button type="button" className="btn btn-secondary btn-sm" onClick={() => window.print()}>Imprimir</button>

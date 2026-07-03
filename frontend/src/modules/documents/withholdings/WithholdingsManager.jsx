@@ -580,7 +580,7 @@ export default function WithholdingsManager() {
       {selectedRetDetail && (
         <div className="modal-overlay" onClick={() => setSelectedRetDetail(null)}>
           <div
-            className="modal-container text-dark"
+            className="modal-container text-dark print-document"
             style={{ maxWidth: '800px', width: '95%' }}
             onClick={(e) => e.stopPropagation()}
           >

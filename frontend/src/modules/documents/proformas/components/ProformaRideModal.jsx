@@ -6,7 +6,7 @@ export default function ProformaRideModal({ viewProforma, onClose }) {
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div
-        className="modal-container text-dark"
+        className="modal-container text-dark print-document"
         style={{
           maxWidth: '800px',
           width: '95%',

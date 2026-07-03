@@ -680,7 +680,7 @@ export default function PurchaseManager() {
       {selectedPurchaseDetail && (
         <div className="modal-overlay" onClick={() => setSelectedPurchaseDetail(null)}>
           <div
-            className="modal-container text-dark"
+            className="modal-container text-dark print-document"
             style={{ maxWidth: '800px', width: '95%' }}
             onClick={(e) => e.stopPropagation()}
           >
