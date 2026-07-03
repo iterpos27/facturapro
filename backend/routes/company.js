@@ -1,7 +1,35 @@
 const express = require('express');
+const fs = require('fs');
+const path = require('path');
+const multer = require('multer');
 const router = express.Router();
 const db = require('../db');
 const { authenticateToken, authorizeRoles } = require('./auth');
+
+const certificatesDir = path.resolve(__dirname, '..', 'certificates');
+if (!fs.existsSync(certificatesDir)) {
+  fs.mkdirSync(certificatesDir, { recursive: true });
+}
+
+const certificateStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, certificatesDir),
+  filename: (_req, file, cb) => {
+    const extension = path.extname(file.originalname).toLowerCase();
+    cb(null, `firma-${Date.now()}${extension}`);
+  },
+});
+
+const certificateUpload = multer({
+  storage: certificateStorage,
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const extension = path.extname(file.originalname).toLowerCase();
+    if (!['.p12', '.pfx'].includes(extension)) {
+      return cb(new Error('Solo se permiten certificados .p12 o .pfx.'));
+    }
+    return cb(null, true);
+  },
+});
 
 // Proteger todas las rutas del enrutador de empresa
 router.use(authenticateToken);
@@ -97,6 +125,31 @@ router.post('/', async (req, res) => {
   } catch (error) {
     console.error('Error al guardar datos de la empresa:', error);
     res.status(500).json({ error: 'Error al procesar la configuración de la empresa.' });
+  }
+});
+
+router.post('/certificate', certificateUpload.single('certificate'), async (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ error: 'Seleccione un certificado .p12 o .pfx.' });
+  }
+
+  try {
+    const relativePath = path.relative(path.resolve(__dirname, '..'), req.file.path).replace(/\\/g, '/');
+    const checkCompany = await db.query('SELECT id_empresa FROM empresas LIMIT 1');
+    if (checkCompany.rows.length > 0) {
+      await db.query(
+        'UPDATE empresas SET certificado_path = $1, updated_at = CURRENT_TIMESTAMP WHERE id_empresa = $2',
+        [relativePath, checkCompany.rows[0].id_empresa]
+      );
+    }
+
+    res.status(201).json({
+      certificado_path: relativePath,
+      filename: req.file.filename,
+    });
+  } catch (error) {
+    console.error('Error al cargar certificado:', error);
+    res.status(500).json({ error: 'No se pudo guardar el certificado.' });
   }
 });
 

@@ -4,6 +4,8 @@ const db = require('../db');
 const { writeAudit } = require('../audit');
 const { buildFacturaXml } = require('../sri_utils');
 const {
+  getSriEndpoints,
+  validateCertificateConfig,
   signXmlWithCertificate,
   sendReceipt,
   authorizeReceipt,
@@ -132,6 +134,42 @@ router.get('/invoices/:id/status', async (req, res) => {
   } catch (error) {
     console.error('Error al consultar estado SRI:', error);
     res.status(500).json({ error: 'Error al consultar el estado SRI.' });
+  }
+});
+
+router.get('/readiness-test', async (req, res) => {
+  try {
+    const company = await loadCompany(db);
+    const checks = [];
+    const addCheck = (key, ok, label, detail = '') => checks.push({ key, ok, label, detail });
+
+    addCheck('company_ruc', Boolean(company.ruc && String(company.ruc).length === 13), 'RUC de empresa', company.ruc || '');
+    addCheck('company_name', Boolean(company.razon_social), 'Razon social', company.razon_social || '');
+    addCheck('company_address', Boolean(company.direccion_matriz), 'Direccion matriz', company.direccion_matriz || '');
+    addCheck('environment', true, 'Ambiente SRI', 'PRUEBAS');
+
+    const endpoints = getSriEndpoints(company, 'PRUEBAS');
+    addCheck('endpoint_reception', Boolean(endpoints.receptionUrl), 'Endpoint recepcion', endpoints.receptionUrl);
+    addCheck('endpoint_authorization', Boolean(endpoints.authorizationUrl), 'Endpoint autorizacion', endpoints.authorizationUrl);
+
+    try {
+      const certificate = validateCertificateConfig(company);
+      addCheck('certificate', true, 'Certificado electronico', `Valido hasta ${new Date(certificate.validTo).toLocaleDateString()}`);
+    } catch (error) {
+      addCheck('certificate', false, 'Certificado electronico', error.message);
+    }
+
+    res.json({
+      ready: checks.every((check) => check.ok),
+      ambiente: 'PRUEBAS',
+      checks,
+    });
+  } catch (error) {
+    res.status(400).json({
+      ready: false,
+      ambiente: 'PRUEBAS',
+      checks: [{ key: 'company', ok: false, label: 'Empresa', detail: error.message }],
+    });
   }
 });
 

@@ -70,6 +70,17 @@ function readPkcs12Certificate(company) {
   };
 }
 
+function validateCertificateConfig(company) {
+  const { certificatePem } = readPkcs12Certificate(company);
+  const cert = forge.pki.certificateFromPem(certificatePem);
+  return {
+    subject: cert.subject.attributes.map((attr) => `${attr.shortName || attr.name}=${attr.value}`).join(', '),
+    issuer: cert.issuer.attributes.map((attr) => `${attr.shortName || attr.name}=${attr.value}`).join(', '),
+    validFrom: cert.validity.notBefore,
+    validTo: cert.validity.notAfter,
+  };
+}
+
 function signXmlWithCertificate(xml, company) {
   const { privateKeyPem, certificatePem } = readPkcs12Certificate(company);
   const signer = new SignedXml({
@@ -183,6 +194,7 @@ async function authorizeReceipt(claveAcceso, company, ambiente = 'PRUEBAS') {
 
 module.exports = {
   getSriEndpoints,
+  validateCertificateConfig,
   signXmlWithCertificate,
   sendReceipt,
   authorizeReceipt,

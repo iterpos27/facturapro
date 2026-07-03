@@ -22,6 +22,10 @@ export default function CompanyManager() {
   const [certificadoClave, setCertificadoClave] = useState('');
   const [sriEndpointRecepcion, setSriEndpointRecepcion] = useState('');
   const [sriEndpointAutorizacion, setSriEndpointAutorizacion] = useState('');
+  const [certificateFile, setCertificateFile] = useState(null);
+  const [uploadingCertificate, setUploadingCertificate] = useState(false);
+  const [checkingSri, setCheckingSri] = useState(false);
+  const [sriChecks, setSriChecks] = useState([]);
 
   useEffect(() => {
     fetchCompanyData();
@@ -127,6 +131,51 @@ export default function CompanyManager() {
       showAlert(err.message, 'error');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleCertificateUpload = async () => {
+    if (!certificateFile) {
+      showAlert('Seleccione un archivo .p12 o .pfx.', 'error');
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append('certificate', certificateFile);
+
+    setUploadingCertificate(true);
+    try {
+      const response = await apiFetch('/api/company/certificate', {
+        method: 'POST',
+        body: formData,
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'No se pudo cargar el certificado.');
+      setCertificadoPath(result.certificado_path || '');
+      setCertificateFile(null);
+      showAlert('Certificado cargado. Guarde la configuracion con la clave del certificado.', 'success');
+    } catch (error) {
+      showAlert(error.message, 'error');
+    } finally {
+      setUploadingCertificate(false);
+    }
+  };
+
+  const handleCheckSriReadiness = async () => {
+    setCheckingSri(true);
+    try {
+      const response = await apiFetch('/api/sri/readiness-test');
+      const result = await response.json();
+      setSriChecks(result.checks || []);
+      if (!response.ok || !result.ready) {
+        showAlert('Revise los requisitos pendientes para SRI pruebas.', 'error');
+        return;
+      }
+      showAlert('Configuracion lista para facturacion SRI en pruebas.', 'success');
+    } catch (error) {
+      showAlert(error.message, 'error');
+    } finally {
+      setCheckingSri(false);
     }
   };
 
@@ -323,6 +372,29 @@ export default function CompanyManager() {
                   </div>
                 </div>
 
+                <div className="row mb-3 align-items-end">
+                  <div className="col-md-8">
+                    <label className="form-label fw-semibold text-secondary">Cargar certificado .p12 / .pfx</label>
+                    <input
+                      type="file"
+                      className="form-control"
+                      accept=".p12,.pfx"
+                      onChange={(e) => setCertificateFile(e.target.files?.[0] || null)}
+                    />
+                    <small className="text-muted">El archivo se guarda localmente en el backend y no se sube a Git.</small>
+                  </div>
+                  <div className="col-md-4 d-grid">
+                    <button
+                      type="button"
+                      className="btn btn-outline-primary"
+                      onClick={handleCertificateUpload}
+                      disabled={uploadingCertificate || !certificateFile}
+                    >
+                      {uploadingCertificate ? 'Cargando...' : 'Cargar certificado'}
+                    </button>
+                  </div>
+                </div>
+
                 <div className="row mb-3">
                   <div className="col-md-6">
                     <label className="form-label fw-semibold text-secondary">Endpoint recepcion</label>
@@ -344,6 +416,37 @@ export default function CompanyManager() {
                       placeholder="URL servicio autorizacion SRI"
                     />
                   </div>
+                </div>
+
+                <div className="border rounded p-3 bg-light">
+                  <div className="d-flex justify-content-between align-items-center gap-2">
+                    <div>
+                      <strong>Validacion SRI pruebas</strong>
+                      <div className="small text-muted">Confirma empresa, endpoints y certificado antes de procesar facturas.</div>
+                    </div>
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      onClick={handleCheckSriReadiness}
+                      disabled={checkingSri}
+                    >
+                      {checkingSri ? 'Validando...' : 'Validar SRI pruebas'}
+                    </button>
+                  </div>
+                  {sriChecks.length > 0 && (
+                    <div className="mt-3">
+                      {sriChecks.map((check) => (
+                        <div key={check.key} className="d-flex justify-content-between gap-2 border-top py-2 small">
+                          <span>
+                            <strong>{check.ok ? 'OK' : 'Pendiente'}</strong> - {check.label}
+                          </span>
+                          <span className={check.ok ? 'text-success' : 'text-danger'} style={{ maxWidth: '55%', textAlign: 'right' }}>
+                            {check.detail}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
 
