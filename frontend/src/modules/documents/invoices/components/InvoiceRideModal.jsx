@@ -1,4 +1,5 @@
 import React from 'react';
+import { printDocument } from '../../../../lib/printDocument';
 
 export default function InvoiceRideModal({ viewInvoice, onClose }) {
   if (!viewInvoice) return null;
@@ -237,7 +238,7 @@ export default function InvoiceRideModal({ viewInvoice, onClose }) {
 
         {/* Actions panel */}
         <div className="form-actions-buttons border-top pt-3 mt-3 d-flex justify-content-end gap-2">
-          <button type="button" className="btn btn-secondary" onClick={() => window.print()}>
+          <button type="button" className="btn btn-secondary" onClick={() => printDocument()}>
             Imprimir RIDE
           </button>
           <button

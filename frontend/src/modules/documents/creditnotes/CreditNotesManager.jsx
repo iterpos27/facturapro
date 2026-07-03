@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import Swal from 'sweetalert2';
 import { apiFetch } from '../../../lib/api';
+import { printDocument } from '../../../lib/printDocument';
 
 export default function CreditNotesManager() {
   const [creditNotes, setCreditNotes] = useState([]);
@@ -636,7 +637,7 @@ export default function CreditNotesManager() {
               <button
                 type="button"
                 className="btn btn-outline-primary"
-                onClick={() => window.print()}
+                onClick={() => printDocument()}
               >
                 Imprimir
               </button>

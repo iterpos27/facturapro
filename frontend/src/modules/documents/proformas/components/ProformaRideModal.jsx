@@ -1,4 +1,5 @@
 import React from 'react';
+import { printDocument } from '../../../../lib/printDocument';
 
 export default function ProformaRideModal({ viewProforma, onClose }) {
   if (!viewProforma) return null;
@@ -178,7 +179,7 @@ export default function ProformaRideModal({ viewProforma, onClose }) {
           <button
             type="button"
             className="btn btn-secondary"
-            onClick={() => window.print()}
+            onClick={() => printDocument()}
           >
             🖨️ Imprimir Cotización
           </button>

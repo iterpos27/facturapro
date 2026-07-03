@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import Swal from 'sweetalert2';
 import { apiFetch } from '../../../lib/api';
+import { printDocument } from '../../../lib/printDocument';
 
 const money = (value) => `$${Number(value || 0).toFixed(2)}`;
 
@@ -288,7 +289,7 @@ export default function CashRegisterManager() {
             <div className="card shadow-sm border mb-3 print-document">
               <div className="card-header bg-white py-3 d-flex justify-content-between align-items-center">
                 <h5 className="mb-0 text-dark fw-bold">Recibo de cierre</h5>
-                <button type="button" className="btn btn-secondary btn-sm" onClick={() => window.print()}>Imprimir</button>
+                <button type="button" className="btn btn-secondary btn-sm" onClick={() => printDocument()}>Imprimir</button>
               </div>
               <div className="card-body p-3 small">
                 <div className="text-center mb-2">

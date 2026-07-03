@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { apiFetch } from '../../../lib/api';
+import { printDocument } from '../../../lib/printDocument';
 import { showToast } from '../../../lib/toast';
 import ProductSearchInput from '../../../shared/ProductSearchInput';
 
@@ -217,7 +218,7 @@ export default function InventoryManager() {
               />
             </div>
             <div className="col-md-4 d-flex gap-2">
-              <button type="button" className="btn btn-secondary" onClick={() => window.print()} disabled={!kardexData}>
+              <button type="button" className="btn btn-secondary" onClick={() => printDocument()} disabled={!kardexData}>
                 Imprimir Kardex
               </button>
               <button type="button" className="btn btn-outline-secondary" onClick={() => fetchKardex('')}>

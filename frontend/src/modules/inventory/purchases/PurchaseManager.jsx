@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import Swal from 'sweetalert2';
 import { apiFetch } from '../../../lib/api';
+import { printDocument } from '../../../lib/printDocument';
 import ProductSearchInput from '../../../shared/ProductSearchInput';
 
 export default function PurchaseManager() {
@@ -767,7 +768,7 @@ export default function PurchaseManager() {
               <button
                 type="button"
                 className="btn btn-outline-primary"
-                onClick={() => window.print()}
+                onClick={() => printDocument()}
               >
                 Imprimir
               </button>
