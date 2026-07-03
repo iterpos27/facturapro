@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import Swal from 'sweetalert2';
-import { apiFetch } from '../../../lib/api';
+import { apiFetch, readApiResponse } from '../../../lib/api';
 
 export default function CompanyManager() {
   const [loading, setLoading] = useState(false);
@@ -36,7 +36,7 @@ export default function CompanyManager() {
     try {
       const response = await apiFetch('/api/company');
       if (!response.ok) throw new Error('Error al consultar datos de la empresa.');
-      const data = await response.json();
+      const data = await readApiResponse(response);
       if (data) {
         setRuc(data.ruc);
         setRazonSocial(data.razon_social);
@@ -122,7 +122,7 @@ export default function CompanyManager() {
         body: JSON.stringify(companyData),
       });
 
-      const result = await response.json();
+      const result = await readApiResponse(response);
       if (!response.ok) throw new Error(result.error || 'No se pudo guardar la configuración.');
 
       showAlert('Configuración de la empresa guardada exitosamente.', 'success');
@@ -149,7 +149,7 @@ export default function CompanyManager() {
         method: 'POST',
         body: formData,
       });
-      const result = await response.json();
+      const result = await readApiResponse(response);
       if (!response.ok) throw new Error(result.error || 'No se pudo cargar el certificado.');
       setCertificadoPath(result.certificado_path || '');
       setCertificateFile(null);
@@ -165,7 +165,7 @@ export default function CompanyManager() {
     setCheckingSri(true);
     try {
       const response = await apiFetch('/api/sri/readiness-test');
-      const result = await response.json();
+      const result = await readApiResponse(response);
       setSriChecks(result.checks || []);
       if (!response.ok || !result.ready) {
         showAlert('Revise los requisitos pendientes para SRI pruebas.', 'error');

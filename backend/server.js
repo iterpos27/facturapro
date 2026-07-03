@@ -67,6 +67,9 @@ app.use('/api/purchases', authenticateToken, authorizeRoles('ADMINISTRADOR', 'CO
 app.use('/api/credit-notes', authenticateToken, authorizeRoles('ADMINISTRADOR', 'CONTADOR'), creditNotesRoutes);
 app.use('/api/withholdings', authenticateToken, authorizeRoles('ADMINISTRADOR', 'CONTADOR'), withholdingsRoutes);
 
+app.use('/api', (req, res) => {
+  res.status(404).json({ error: `Ruta API no encontrada: ${req.method} ${req.originalUrl}` });
+});
 
 // Manejo de errores global
 app.use((err, req, res, next) => {

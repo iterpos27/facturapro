@@ -41,3 +41,22 @@ export async function apiFetch(path, options = {}) {
 
   return response
 }
+
+export async function readApiResponse(response) {
+  const contentType = response.headers.get('content-type') || ''
+  const rawText = await response.text()
+
+  if (contentType.includes('application/json')) {
+    return rawText ? JSON.parse(rawText) : null
+  }
+
+  if (!rawText) return null
+
+  const strippedText = rawText.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
+  const preview = strippedText || rawText.slice(0, 180)
+  throw new Error(
+    response.status === 404
+      ? 'Ruta API no disponible. Reinicia el backend y vuelve a intentar.'
+      : `Respuesta inesperada del servidor: ${preview.slice(0, 180)}`
+  )
+}
