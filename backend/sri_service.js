@@ -143,7 +143,7 @@ async function postSoap(url, soapAction, body) {
     timeout: 30000,
     headers: {
       'Content-Type': 'text/xml;charset=UTF-8',
-      SOAPAction: soapAction,
+      SOAPAction: soapAction || '',
     },
   });
   return response.data;
@@ -162,7 +162,7 @@ async function sendReceipt(xmlFirmado, company, ambiente = 'PRUEBAS') {
   </soapenv:Body>
 </soapenv:Envelope>`;
 
-  const responseXml = await postSoap(receptionUrl, 'validarComprobante', soapBody);
+  const responseXml = await postSoap(receptionUrl, '', soapBody);
   return {
     estado: getFirstText(responseXml, ['estado']) || 'SIN_RESPUESTA',
     mensajes: getMessages(responseXml),
@@ -182,7 +182,7 @@ async function authorizeReceipt(claveAcceso, company, ambiente = 'PRUEBAS') {
   </soapenv:Body>
 </soapenv:Envelope>`;
 
-  const responseXml = await postSoap(authorizationUrl, 'autorizacionComprobante', soapBody);
+  const responseXml = await postSoap(authorizationUrl, '', soapBody);
   return {
     estado: getFirstText(responseXml, ['estado']) || 'SIN_AUTORIZACION',
     numeroAutorizacion: getFirstText(responseXml, ['numeroAutorizacion']),
