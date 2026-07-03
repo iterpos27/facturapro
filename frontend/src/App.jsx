@@ -611,7 +611,7 @@ function App() {
             <span className="ms-1">&copy; 2026 FacturaPro.</span>
           </div>
           <div className="ms-auto">
-            <span>Desarrollado con CoreUI</span>
+            <span>Desarrollado con IPS Tech</span>
           </div>
         </CFooter>
       </div>
