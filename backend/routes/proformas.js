@@ -11,7 +11,17 @@ router.use(authenticateToken);
 const formatTransactionNumber = (value) => String(Number(value) || 0).padStart(6, '0');
 const formatProformaNumber = (transactionNumber) => formatTransactionNumber(transactionNumber);
 
-const mapRowToProforma = (row, items = []) => ({
+const mapCompany = (row) => row ? ({
+  ruc: row.ruc,
+  razon_social: row.razon_social,
+  nombre_comercial: row.nombre_comercial,
+  direccion_matriz: row.direccion_matriz,
+  obligado_contabilidad: row.obligado_contabilidad,
+  contribuyente_especial: row.contribuyente_especial,
+  regimen: row.regimen,
+}) : null;
+
+const mapRowToProforma = (row, items = [], company = null) => ({
   id: row.id_proforma,
   id_proforma: row.id_proforma,
   number: row.numero_proforma,
@@ -34,6 +44,7 @@ const mapRowToProforma = (row, items = []) => ({
   status: row.estado,
   username: row.username || '',
   items,
+  company,
 });
 
 const mapDetailRow = (row) => ({
@@ -201,7 +212,13 @@ const fetchProformaById = async (id) => {
     ORDER BY pd.id_detalle ASC
   `, [id]);
 
-  return mapRowToProforma(headerResult.rows[0], detailResult.rows.map(mapDetailRow));
+  const companyResult = await db.query('SELECT * FROM empresas LIMIT 1');
+
+  return mapRowToProforma(
+    headerResult.rows[0],
+    detailResult.rows.map(mapDetailRow),
+    mapCompany(companyResult.rows[0])
+  );
 };
 
 router.get('/', async (req, res) => {
@@ -215,6 +232,8 @@ router.get('/', async (req, res) => {
       LEFT JOIN usuarios u ON p.id_usuario = u.id_usuario
       ORDER BY p.transaction_number DESC
     `);
+    const companyResult = await db.query('SELECT * FROM empresas LIMIT 1');
+    const company = mapCompany(companyResult.rows[0]);
 
     const proformas = [];
     for (const row of result.rows) {
@@ -227,7 +246,7 @@ router.get('/', async (req, res) => {
         WHERE pd.id_proforma = $1
         ORDER BY pd.id_detalle ASC
       `, [row.id_proforma]);
-      proformas.push(mapRowToProforma(row, detailResult.rows.map(mapDetailRow)));
+      proformas.push(mapRowToProforma(row, detailResult.rows.map(mapDetailRow), company));
     }
 
     res.json(proformas);

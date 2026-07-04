@@ -102,12 +102,15 @@ router.post('/', async (req, res) => {
     const countRes = await client.query('SELECT COUNT(*) FROM retenciones');
     const nextSeq = parseInt(countRes.rows[0].count || 0, 10) + 1;
     const numero_retencion = `RET-001-001-${String(nextSeq).padStart(9, '0')}`;
+    const companyRes = await client.query('SELECT ruc FROM empresas LIMIT 1');
+    if (companyRes.rows.length === 0 || !companyRes.rows[0].ruc) {
+      throw new Error('Configure el RUC de la empresa antes de emitir retenciones.');
+    }
 
-    // Clave de acceso SRI ficticia
     const accessKey = generarClaveAccesoSRI({
       fechaEmision: new Date(),
       tipoComprobante: '07',
-      ruc: '1792345678001',
+      ruc: companyRes.rows[0].ruc,
       ambiente: '1',
       establecimiento: '001',
       puntoEmision: '001',

@@ -21,7 +21,7 @@ function calcularModulo11(claveSinDigito) {
 function generarClaveAccesoSRI({
   fechaEmision,
   tipoComprobante,
-  ruc = '1792345678001',
+  ruc,
   ambiente = '1',
   establecimiento = '001',
   puntoEmision = '001',
@@ -35,7 +35,10 @@ function generarClaveAccesoSRI({
   const yyyy = String(dateObj.getFullYear());
   const fechaStr = `${dd}${mm}${yyyy}`;
 
-  const rucStr = String(ruc).padEnd(13, '0').slice(0, 13);
+  const rucStr = String(ruc || '').trim();
+  if (!/^\d{13}$/.test(rucStr)) {
+    throw new Error('Configure un RUC de empresa valido para generar la clave de acceso SRI.');
+  }
   const ambienteStr = String(ambiente);
   const serie = `${String(establecimiento).padStart(3, '0')}${String(puntoEmision).padStart(3, '0')}`;
   const secuencialStr = String(secuencial).padStart(9, '0');

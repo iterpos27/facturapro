@@ -101,11 +101,14 @@ router.get('/:id', async (req, res) => {
       throw error;
     });
 
+    const companyRes = await db.query('SELECT * FROM empresas LIMIT 1');
+
     res.json({
       invoice: invoiceRes.rows[0],
       details: detailsRes.rows,
       payments: paymentsRes.rows,
       cobros: cobrosRes.rows,
+      company: companyRes.rows[0] || null,
     });
   } catch (error) {
     console.error('Error al obtener detalle de factura:', error);

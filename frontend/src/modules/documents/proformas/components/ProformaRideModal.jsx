@@ -4,6 +4,12 @@ import { printDocument } from '../../../../lib/printDocument';
 export default function ProformaRideModal({ viewProforma, onClose }) {
   if (!viewProforma) return null;
 
+  const company = viewProforma.company || {};
+  const issuerName = company.razon_social || company.nombre_comercial || 'Empresa no configurada';
+  const companyRuc = company.ruc || 'RUC no configurado';
+  const matrixAddress = company.direccion_matriz || 'Direccion matriz no configurada';
+  const accountingRequired = company.obligado_contabilidad ? 'SI' : 'NO';
+
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div
@@ -35,11 +41,15 @@ export default function ProformaRideModal({ viewProforma, onClose }) {
             <div>
               <strong>EMISOR:</strong>
             </div>
-            <div>FACTURAPRO S.A.</div>
-            <div>RUC: 1792345678001</div>
-            <div>Matriz: Av. Amazonas N32-156 y Av. Mariana de Jesús</div>
+            <div>{issuerName}</div>
+            <div>RUC: {companyRuc}</div>
+            <div>Matriz: {matrixAddress}</div>
             <div>Establecimiento: MATRIZ (001-001)</div>
-            <div>Obligado a llevar contabilidad: SI</div>
+            <div>Obligado a llevar contabilidad: {accountingRequired}</div>
+            {company.contribuyente_especial && (
+              <div>Contribuyente Especial No: {company.contribuyente_especial}</div>
+            )}
+            {company.regimen && <div>{company.regimen}</div>}
           </div>
           <div className="col-md-6 mb-2">
             <div>

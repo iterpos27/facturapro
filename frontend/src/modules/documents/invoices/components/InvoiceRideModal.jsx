@@ -4,8 +4,13 @@ import { printDocument } from '../../../../lib/printDocument';
 export default function InvoiceRideModal({ viewInvoice, onClose }) {
   if (!viewInvoice) return null;
 
-  const { invoice, details, payments, cobros } = viewInvoice;
+  const { invoice, details, payments, cobros, company } = viewInvoice;
   const isCanceled = invoice.estado === 'ANULADA';
+  const issuerName = company?.razon_social || company?.nombre_comercial || 'Empresa no configurada';
+  const tradeName = company?.nombre_comercial || issuerName;
+  const companyRuc = company?.ruc || 'RUC no configurado';
+  const matrixAddress = company?.direccion_matriz || 'Direccion matriz no configurada';
+  const accountingRequired = company?.obligado_contabilidad ? 'SI' : 'NO';
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -39,19 +44,19 @@ export default function InvoiceRideModal({ viewInvoice, onClose }) {
             <div className="p-3 border rounded h-100" style={{ backgroundColor: '#fcfcfc', borderColor: '#e2e8f0' }}>
               <div className="d-flex align-items-center mb-2">
                 <span style={{ fontSize: '1.5rem', fontWeight: '800', color: 'var(--primary)', letterSpacing: '-0.03em' }}>
-                  FACTURAPRO S.A.
+                  {tradeName}
                 </span>
               </div>
               <div className="small">
-                <div className="fw-bold mb-1">FACTURAPRO S.A.</div>
-                <div><strong>Matriz:</strong> {invoice.direccion_matriz || 'Av. Amazonas N32-120 y La Niña'}</div>
+                <div className="fw-bold mb-1">{issuerName}</div>
+                <div><strong>Matriz:</strong> {matrixAddress}</div>
                 <div><strong>Sucursal:</strong> {invoice.sucursal_nombre} ({invoice.codigo_establecimiento}-{invoice.punto_emision})</div>
-                <div className="mt-2"><strong>Obligado a llevar contabilidad:</strong> SI</div>
-                {invoice.contribuyente_especial && (
-                  <div><strong>Contribuyente Especial No:</strong> {invoice.contribuyente_especial}</div>
+                <div className="mt-2"><strong>Obligado a llevar contabilidad:</strong> {accountingRequired}</div>
+                {company?.contribuyente_especial && (
+                  <div><strong>Contribuyente Especial No:</strong> {company.contribuyente_especial}</div>
                 )}
-                {invoice.regimen_rimpe && (
-                  <div className="badge bg-secondary mt-1">Contribuyente Régimen RIMPE</div>
+                {company?.regimen && (
+                  <div className="badge bg-secondary mt-1">{company.regimen}</div>
                 )}
               </div>
             </div>
@@ -60,7 +65,7 @@ export default function InvoiceRideModal({ viewInvoice, onClose }) {
           {/* Right Panel: SRI Info */}
           <div className="col-md-6">
             <div className="p-3 border rounded h-100" style={{ backgroundColor: '#fcfcfc', borderColor: '#e2e8f0' }}>
-              <div className="text-secondary fw-bold small mb-1">R.U.C. 1792345678001</div>
+              <div className="text-secondary fw-bold small mb-1">R.U.C. {companyRuc}</div>
               <h4 className="fw-bold m-0" style={{ letterSpacing: '-0.02em', color: '#1e293b' }}>
                 FACTURA
               </h4>

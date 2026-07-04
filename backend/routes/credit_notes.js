@@ -160,11 +160,15 @@ router.post('/', async (req, res) => {
     const countRes = await client.query('SELECT COUNT(*)::int AS total FROM notas_credito');
     const nextSeq = Number(countRes.rows[0].total || 0) + 1;
     const numeroNotaCredito = `NC-001-001-${String(nextSeq).padStart(9, '0')}`;
+    const companyRes = await client.query('SELECT ruc FROM empresas LIMIT 1');
+    if (companyRes.rows.length === 0 || !companyRes.rows[0].ruc) {
+      throw new Error('Configure el RUC de la empresa antes de emitir notas de credito.');
+    }
 
     const accessKey = generarClaveAccesoSRI({
       fechaEmision: new Date(),
       tipoComprobante: '04',
-      ruc: '1792345678001',
+      ruc: companyRes.rows[0].ruc,
       ambiente: '1',
       establecimiento: '001',
       puntoEmision: '001',
