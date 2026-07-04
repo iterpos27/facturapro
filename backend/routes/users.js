@@ -2,11 +2,10 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 const bcrypt = require('bcryptjs');
-const { authenticateToken, authorizeRoles } = require('./auth');
+const { authenticateToken } = require('./auth');
 
 // Proteger todas las rutas del enrutador de usuarios
 router.use(authenticateToken);
-router.use(authorizeRoles('ADMINISTRADOR'));
 
 // 1. Obtener lista de usuarios (GET /api/users)
 router.get('/', async (req, res) => {

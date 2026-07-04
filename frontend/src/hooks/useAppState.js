@@ -118,7 +118,7 @@ export function useAppState() {
     navigate(path);
   };
 
-  const permissions = getPermissions(currentUser?.rol_nombre);
+  const permissions = getPermissions(currentUser);
 
   return {
     currentUser,

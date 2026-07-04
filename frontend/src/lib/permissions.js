@@ -95,10 +95,47 @@ export const ROLE_PERMISSIONS = {
   },
 };
 
+const PERMISSION_MODULE_MAP = {
+  CLIENTS_CRUD: ['clients'],
+  SUPPLIERS_CRUD: ['suppliers'],
+  PRODUCTS_CRUD: ['products'],
+  CATEGORIES_CRUD: ['categories'],
+  INVENTORY_READ: ['inventory'],
+  PURCHASES_CRUD: ['purchases'],
+  PROFORMAS_CRUD: ['proformas'],
+  INVOICES_CRUD: ['invoices'],
+  RECEIVABLES_CRUD: ['receivables'],
+  CREDIT_NOTES_CRUD: ['creditnotes'],
+  WITHHOLDINGS_CRUD: ['withholdings'],
+  REPORTS_READ: ['reports'],
+  CASH_REGISTER_CRUD: ['cash'],
+  COMPANY_UPDATE: ['company'],
+  BRANCHES_CRUD: ['branches'],
+  SEQUENTIALS_UPDATE: ['branches'],
+  USERS_CRUD: ['users'],
+  ROLES_CRUD: ['users'],
+  AUDIT_READ: ['audit'],
+};
+
 /**
  * Devuelve el objeto de permisos para el rol dado.
  * Si el rol no existe, cae a los permisos de VENDEDOR.
  */
-export function getPermissions(rolNombre) {
+export function getPermissions(userOrRole) {
+  const user = typeof userOrRole === 'object' && userOrRole !== null ? userOrRole : null;
+  const rolNombre = user ? user.rol_nombre : userOrRole;
+
+  if (Array.isArray(user?.permissions) && user.permissions.length > 0) {
+    const permissions = Object.fromEntries(Object.keys(ROLE_PERMISSIONS.ADMINISTRADOR).map((key) => [key, false]));
+
+    user.permissions.forEach((permission) => {
+      (PERMISSION_MODULE_MAP[permission] || []).forEach((moduleKey) => {
+        permissions[moduleKey] = true;
+      });
+    });
+
+    return permissions;
+  }
+
   return ROLE_PERMISSIONS[rolNombre] || ROLE_PERMISSIONS.VENDEDOR;
 }

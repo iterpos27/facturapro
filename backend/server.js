@@ -46,7 +46,7 @@ app.get('/health', (_req, res) => {
 });
 
 // Registrar rutas
-const { router: authRoutes, authenticateToken, authorizeRoles } = require('./routes/auth');
+const { router: authRoutes, authenticateToken, authorizePermissions } = require('./routes/auth');
 const clientRoutes = require('./routes/clients');
 const productRoutes = require('./routes/products');
 const categoryRoutes = require('./routes/categories');
@@ -67,24 +67,24 @@ const auditRoutes = require('./routes/audit');
 const sriRoutes = require('./routes/sri');
 
 app.use('/api/auth', authRoutes);
-app.use('/api/clients', authenticateToken, clientRoutes);
-app.use('/api/products', authenticateToken, productRoutes);
-app.use('/api/categories', authenticateToken, categoryRoutes);
-app.use('/api/users', authenticateToken, authorizeRoles('ADMINISTRADOR'), userRoutes);
-app.use('/api/company', authenticateToken, companyRoutes);
-app.use('/api/branches', authenticateToken, branchRoutes);
-app.use('/api/suppliers', authenticateToken, supplierRoutes);
-app.use('/api/inventory', authenticateToken, inventoryRoutes);
-app.use('/api/cash-registers', authenticateToken, cashRegisterRoutes);
-app.use('/api/invoices', authenticateToken, invoiceRoutes);
-app.use('/api/proformas', authenticateToken, proformaRoutes);
-app.use('/api/sequentials', authenticateToken, authorizeRoles('ADMINISTRADOR'), sequentialRoutes);
-app.use('/api/reports', authenticateToken, authorizeRoles('ADMINISTRADOR', 'CONTADOR'), reportRoutes);
-app.use('/api/audit', authenticateToken, authorizeRoles('ADMINISTRADOR', 'CONTADOR'), auditRoutes);
-app.use('/api/sri', authenticateToken, authorizeRoles('ADMINISTRADOR', 'CONTADOR'), sriRoutes);
-app.use('/api/purchases', authenticateToken, authorizeRoles('ADMINISTRADOR', 'CONTADOR'), purchaseRoutes);
-app.use('/api/credit-notes', authenticateToken, authorizeRoles('ADMINISTRADOR', 'CONTADOR'), creditNotesRoutes);
-app.use('/api/withholdings', authenticateToken, authorizeRoles('ADMINISTRADOR', 'CONTADOR'), withholdingsRoutes);
+app.use('/api/clients', authenticateToken, authorizePermissions('CLIENTS_CRUD'), clientRoutes);
+app.use('/api/products', authenticateToken, authorizePermissions('PRODUCTS_CRUD'), productRoutes);
+app.use('/api/categories', authenticateToken, authorizePermissions('CATEGORIES_CRUD'), categoryRoutes);
+app.use('/api/users', authenticateToken, authorizePermissions('USERS_CRUD', 'ROLES_CRUD'), userRoutes);
+app.use('/api/company', authenticateToken, authorizePermissions('COMPANY_UPDATE'), companyRoutes);
+app.use('/api/branches', authenticateToken, authorizePermissions('BRANCHES_CRUD'), branchRoutes);
+app.use('/api/suppliers', authenticateToken, authorizePermissions('SUPPLIERS_CRUD'), supplierRoutes);
+app.use('/api/inventory', authenticateToken, authorizePermissions('INVENTORY_READ'), inventoryRoutes);
+app.use('/api/cash-registers', authenticateToken, authorizePermissions('CASH_REGISTER_CRUD'), cashRegisterRoutes);
+app.use('/api/invoices', authenticateToken, authorizePermissions('INVOICES_CRUD', 'RECEIVABLES_CRUD'), invoiceRoutes);
+app.use('/api/proformas', authenticateToken, authorizePermissions('PROFORMAS_CRUD'), proformaRoutes);
+app.use('/api/sequentials', authenticateToken, authorizePermissions('SEQUENTIALS_UPDATE'), sequentialRoutes);
+app.use('/api/reports', authenticateToken, authorizePermissions('REPORTS_READ'), reportRoutes);
+app.use('/api/audit', authenticateToken, authorizePermissions('AUDIT_READ'), auditRoutes);
+app.use('/api/sri', authenticateToken, authorizePermissions('SRI_ELECTRONIC_BILLING'), sriRoutes);
+app.use('/api/purchases', authenticateToken, authorizePermissions('PURCHASES_CRUD'), purchaseRoutes);
+app.use('/api/credit-notes', authenticateToken, authorizePermissions('CREDIT_NOTES_CRUD'), creditNotesRoutes);
+app.use('/api/withholdings', authenticateToken, authorizePermissions('WITHHOLDINGS_CRUD'), withholdingsRoutes);
 
 app.use('/api', (req, res) => {
   res.status(404).json({ error: `Ruta API no encontrada: ${req.method} ${req.originalUrl}` });

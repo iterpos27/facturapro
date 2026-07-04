@@ -1,11 +1,11 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
-const { authenticateToken, authorizeRoles } = require('./auth');
+const { authenticateToken } = require('./auth');
+const { ensureBranchSequentials } = require('../sequential_service');
 
 // Proteger todas las rutas del enrutador de sucursales
 router.use(authenticateToken);
-router.use(authorizeRoles('ADMINISTRADOR'));
 
 // 1. Obtener lista de sucursales (GET /api/branches)
 router.get('/', async (req, res) => {
@@ -31,25 +31,32 @@ router.post('/', async (req, res) => {
     return res.status(400).json({ error: 'Todos los campos requeridos deben ser completados.' });
   }
 
+  const client = await db.pool.connect();
   try {
-    // Obtener la empresa activa
-    const companyRes = await db.query('SELECT id_empresa FROM empresas LIMIT 1');
+    await client.query('BEGIN');
+
+    const companyRes = await client.query('SELECT id_empresa FROM empresas LIMIT 1');
     if (companyRes.rows.length === 0) {
-      return res.status(400).json({ error: 'Debe configurar primero los datos de la empresa.' });
+      throw new Error('Debe configurar primero los datos de la empresa.');
     }
     const id_empresa = companyRes.rows[0].id_empresa;
 
-    const result = await db.query(
+    const result = await client.query(
       `INSERT INTO sucursales (id_empresa, codigo_establecimiento, punto_emision, nombre, direccion, activo)
        VALUES ($1, $2, $3, $4, $5, $6)
        RETURNING *`,
       [id_empresa, codigo_establecimiento, punto_emision, nombre, direccion, activo !== undefined ? activo : true]
     );
 
+    await ensureBranchSequentials(client, result.rows[0].id_sucursal);
+    await client.query('COMMIT');
     res.status(201).json(result.rows[0]);
   } catch (error) {
+    await client.query('ROLLBACK');
     console.error('Error al crear sucursal:', error);
-    res.status(500).json({ error: 'Error al registrar la sucursal/punto de emisión.' });
+    res.status(400).json({ error: error.message || 'Error al registrar la sucursal/punto de emision.' });
+  } finally {
+    client.release();
   }
 });
 

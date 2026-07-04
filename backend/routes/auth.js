@@ -11,6 +11,73 @@ const rateLimitWindow = 15 * 60 * 1000; // 15 minutos
 const maxLoginAttempts = 5;
 const loginAttempts = new Map();
 
+const ROLE_PERMISSION_FALLBACK = {
+  ADMINISTRADOR: [
+    'DASHBOARD_READ',
+    'USERS_CRUD',
+    'ROLES_CRUD',
+    'COMPANY_UPDATE',
+    'BRANCHES_CRUD',
+    'SEQUENTIALS_UPDATE',
+    'CLIENTS_CRUD',
+    'SUPPLIERS_CRUD',
+    'PRODUCTS_CRUD',
+    'CATEGORIES_CRUD',
+    'INVENTORY_READ',
+    'PURCHASES_CRUD',
+    'PROFORMAS_CRUD',
+    'INVOICES_CRUD',
+    'RECEIVABLES_CRUD',
+    'CREDIT_NOTES_CRUD',
+    'WITHHOLDINGS_CRUD',
+    'REPORTS_READ',
+    'CASH_REGISTER_CRUD',
+    'AUDIT_READ',
+    'SRI_ELECTRONIC_BILLING',
+  ],
+  VENDEDOR: [
+    'DASHBOARD_READ',
+    'CLIENTS_CRUD',
+    'PRODUCTS_CRUD',
+    'PROFORMAS_CRUD',
+    'INVOICES_CRUD',
+    'RECEIVABLES_CRUD',
+    'CASH_REGISTER_CRUD',
+  ],
+  CONTADOR: [
+    'DASHBOARD_READ',
+    'CLIENTS_CRUD',
+    'SUPPLIERS_CRUD',
+    'PRODUCTS_CRUD',
+    'CATEGORIES_CRUD',
+    'INVENTORY_READ',
+    'PURCHASES_CRUD',
+    'PROFORMAS_CRUD',
+    'INVOICES_CRUD',
+    'RECEIVABLES_CRUD',
+    'CREDIT_NOTES_CRUD',
+    'WITHHOLDINGS_CRUD',
+    'REPORTS_READ',
+    'AUDIT_READ',
+    'SRI_ELECTRONIC_BILLING',
+  ],
+};
+
+async function getUserPermissions(idRol) {
+  const result = await db.query(`
+    SELECT r.nombre AS rol_nombre, p.nombre AS permiso_nombre
+    FROM roles r
+    LEFT JOIN roles_permisos rp ON r.id_rol = rp.id_rol
+    LEFT JOIN permisos p ON rp.id_permiso = p.id_permiso
+    WHERE r.id_rol = $1
+    ORDER BY p.nombre ASC
+  `, [idRol]);
+
+  const roleName = result.rows[0]?.rol_nombre;
+  const permissions = result.rows.map((row) => row.permiso_nombre).filter(Boolean);
+  return permissions.length > 0 ? permissions : (ROLE_PERMISSION_FALLBACK[roleName] || []);
+}
+
 const loginLimiter = (req, res, next) => {
   const ip = req.ip || req.headers['x-forwarded-for'] || '127.0.0.1';
   const now = Date.now();
@@ -60,6 +127,7 @@ router.post('/login', loginLimiter, async (req, res) => {
     }
 
     const user = result.rows[0];
+    const permissions = await getUserPermissions(user.id_rol);
 
     // Verificar contraseña
     const passwordMatch = await bcrypt.compare(password, user.password_hash);
@@ -74,7 +142,8 @@ router.post('/login', loginLimiter, async (req, res) => {
         username: user.username, 
         email: user.email, 
         id_rol: user.id_rol,
-        rol_nombre: user.rol_nombre
+        rol_nombre: user.rol_nombre,
+        permissions
       },
       JWT_SECRET,
       { expiresIn: '24h' }
@@ -87,7 +156,8 @@ router.post('/login', loginLimiter, async (req, res) => {
         username: user.username,
         email: user.email,
         id_rol: user.id_rol,
-        rol_nombre: user.rol_nombre
+        rol_nombre: user.rol_nombre,
+        permissions
       }
     });
 
@@ -124,13 +194,44 @@ const authorizeRoles = (...allowedRoles) => {
   };
 };
 
+const authorizePermissions = (...allowedPermissions) => {
+  return async (req, res, next) => {
+    if (!req.user) {
+      return res.status(401).json({ error: 'No autorizado. Falta autenticacion.' });
+    }
+
+    if (req.user.rol_nombre === 'ADMINISTRADOR') {
+      return next();
+    }
+
+    try {
+      const permissions = await getUserPermissions(req.user.id_rol);
+      const allowed = allowedPermissions.some((permission) => permissions.includes(permission));
+      if (!allowed) {
+        return res.status(403).json({ error: 'Acceso denegado. No tienes permisos para esta accion.' });
+      }
+      next();
+    } catch (error) {
+      console.error('Error al validar permisos:', error);
+      res.status(500).json({ error: 'Error al validar permisos del usuario.' });
+    }
+  };
+};
+
 // 2. Obtener datos del usuario actual (GET /api/auth/me)
 router.get('/me', authenticateToken, async (req, res) => {
-  res.json({ user: req.user });
+  try {
+    const permissions = await getUserPermissions(req.user.id_rol);
+    res.json({ user: { ...req.user, permissions } });
+  } catch (error) {
+    console.error('Error al consultar permisos del usuario:', error);
+    res.json({ user: req.user });
+  }
 });
 
 module.exports = {
   router,
   authenticateToken,
-  authorizeRoles
+  authorizeRoles,
+  authorizePermissions,
 };

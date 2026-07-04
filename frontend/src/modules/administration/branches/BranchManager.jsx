@@ -2,6 +2,12 @@ import React, { useState, useEffect, useCallback } from 'react';
 import Swal from 'sweetalert2';
 import { apiFetch, apiUrl } from '../../../lib/api';
 
+const DOCUMENT_LABELS = {
+  FACTURA: 'Factura',
+  NOTA_CREDITO: 'Nota de credito',
+  RETENCION: 'Retencion',
+};
+
 export default function BranchManager() {
   const [branches, setBranches] = useState([]);
   const [sequentials, setSequentials] = useState([]);
@@ -351,14 +357,14 @@ export default function BranchManager() {
       <div className="client-data-panel mt-3">
         <div className="d-flex align-items-center justify-content-between mb-3">
           <div>
-            <h2 className="h5 fw-bold mb-1">Secuenciales de facturacion</h2>
-            <p className="text-secondary mb-0" style={{ fontSize: '0.9rem' }}>Configura el siguiente numero que se usara al emitir facturas.</p>
+            <h2 className="h5 fw-bold mb-1">Secuenciales por comprobante</h2>
+            <p className="text-secondary mb-0" style={{ fontSize: '0.9rem' }}>Configura el siguiente numero para facturas, notas de credito y retenciones.</p>
           </div>
           <button type="button" className="btn btn-secondary" onClick={fetchSequentials}>Actualizar</button>
         </div>
 
         {sequentials.length === 0 ? (
-          <p className="module-empty-state">No hay secuenciales configurados. Al emitir la primera factura se creara el secuencial automaticamente.</p>
+          <p className="module-empty-state">No hay secuenciales configurados. Al emitir el primer comprobante se creara el secuencial automaticamente.</p>
         ) : (
           <div className="table-responsive">
             <table className="table table-striped table-hover align-middle border">
@@ -377,7 +383,7 @@ export default function BranchManager() {
                   <tr key={seq.id_secuencial}>
                     <td>{seq.codigo_establecimiento} - {seq.sucursal_nombre}</td>
                     <td>{seq.punto_emision}</td>
-                    <td>{seq.tipo_comprobante}</td>
+                    <td>{DOCUMENT_LABELS[seq.tipo_comprobante] || seq.tipo_comprobante}</td>
                     <td>
                       <input
                         type="number"

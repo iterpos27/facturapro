@@ -1,14 +1,13 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
-const { authenticateToken, authorizeRoles } = require('./auth');
+const { authenticateToken } = require('./auth');
 const { writeAudit } = require('../audit');
 const { generarClaveAccesoSRI } = require('../sri_utils');
 const { validate, schemas } = require('../middleware/validate');
+const { formatDocumentNumber, getDefaultBranch, nextDocumentSequential } = require('../sequential_service');
 
 router.use(authenticateToken);
-
-const formatSequential = (num) => String(num).padStart(9, '0');
 
 router.get('/', async (req, res) => {
   const page  = Math.max(parseInt(req.query.page  || '1',  10), 1);
@@ -158,16 +157,8 @@ router.post('/', validate(schemas.createInvoice), async (req, res) => {
       }
     }
 
-    const branchRes = await client.query(`
-      SELECT s.id_sucursal, s.codigo_establecimiento, s.punto_emision
-      FROM sucursales s
-      WHERE s.activo = true
-      LIMIT 1
-    `);
-    if (branchRes.rows.length === 0) {
-      throw new Error('No hay sucursales activas configuradas.');
-    }
-    const { id_sucursal, codigo_establecimiento, punto_emision } = branchRes.rows[0];
+    const branch = await getDefaultBranch(client);
+    const { id_sucursal, codigo_establecimiento, punto_emision } = branch;
 
     const boxSessionRes = await client.query(`
       SELECT id_sesion FROM sesiones_caja
@@ -179,29 +170,9 @@ router.post('/', validate(schemas.createInvoice), async (req, res) => {
     }
     const id_sesion_caja = boxSessionRes.rows[0].id_sesion;
 
-    const seqRes = await client.query(`
-      SELECT secuencial_actual FROM secuenciales
-      WHERE id_sucursal = $1 AND tipo_comprobante = 'FACTURA' AND activo = true
-      FOR UPDATE
-    `, [id_sucursal]);
-
-    let seqActual = 1;
-    if (seqRes.rows.length > 0) {
-      seqActual = seqRes.rows[0].secuencial_actual;
-      await client.query(`
-        UPDATE secuenciales
-        SET secuencial_actual = secuencial_actual + 1
-        WHERE id_sucursal = $1 AND tipo_comprobante = 'FACTURA'
-      `, [id_sucursal]);
-    } else {
-      await client.query(`
-        INSERT INTO secuenciales (id_sucursal, tipo_comprobante, secuencial_actual)
-        VALUES ($1, 'FACTURA', 2)
-      `, [id_sucursal]);
-    }
-
-    const secuencialStr = formatSequential(seqActual);
-    const numeroFactura = `${codigo_establecimiento}-${punto_emision}-${secuencialStr}`;
+    const seqActual = await nextDocumentSequential(client, id_sucursal, 'FACTURA');
+    const secuencialStr = String(seqActual).padStart(9, '0');
+    const numeroFactura = formatDocumentNumber(branch, seqActual);
 
     let subtotalSinImpuestos = 0;
     let subtotalConIva = 0;
@@ -395,7 +366,7 @@ router.post('/', validate(schemas.createInvoice), async (req, res) => {
   }
 });
 
-router.put('/:id/cancel', authorizeRoles('ADMINISTRADOR', 'CONTADOR'), async (req, res) => {
+router.put('/:id/cancel', async (req, res) => {
   const { id } = req.params;
   const { reason } = req.body;
   const id_usuario = req.user.id_usuario;

@@ -2,11 +2,10 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 const { writeAudit } = require('../audit');
-const { authenticateToken, authorizeRoles } = require('./auth');
+const { authenticateToken } = require('./auth');
 
 // Proteger todas las rutas de secuenciales con autenticación y autorización
 router.use(authenticateToken);
-router.use(authorizeRoles('ADMINISTRADOR'));
 
 const normalizeThreeDigits = (value, fieldName) => {
   const normalized = String(value || '').replace(/\D/g, '').padStart(3, '0').slice(-3);

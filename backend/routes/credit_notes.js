@@ -3,12 +3,12 @@ const router = express.Router();
 const db = require('../db');
 const { writeAudit } = require('../audit');
 const { generarClaveAccesoSRI } = require('../sri_utils');
-const { authenticateToken, authorizeRoles } = require('./auth');
+const { authenticateToken } = require('./auth');
 const { validate, schemas } = require('../middleware/validate');
+const { formatDocumentNumber, getDefaultBranch, nextDocumentSequential } = require('../sequential_service');
 
 // Proteger todas las rutas de notas de crédito con autenticación y autorización
 router.use(authenticateToken);
-router.use(authorizeRoles('ADMINISTRADOR', 'CONTADOR'));
 
 router.get('/', async (req, res) => {
   const page  = Math.max(parseInt(req.query.page  || '1',  10), 1);
@@ -159,9 +159,9 @@ router.post('/', async (req, res) => {
     }
     const totalNc = subtotalConIva + subtotalIvaCero + valorIva;
 
-    const countRes = await client.query('SELECT COUNT(*)::int AS total FROM notas_credito');
-    const nextSeq = Number(countRes.rows[0].total || 0) + 1;
-    const numeroNotaCredito = `NC-001-001-${String(nextSeq).padStart(9, '0')}`;
+    const branch = await getDefaultBranch(client);
+    const nextSeq = await nextDocumentSequential(client, branch.id_sucursal, 'NOTA_CREDITO');
+    const numeroNotaCredito = formatDocumentNumber(branch, nextSeq);
     const companyRes = await client.query('SELECT ruc FROM empresas LIMIT 1');
     if (companyRes.rows.length === 0 || !companyRes.rows[0].ruc) {
       throw new Error('Configure el RUC de la empresa antes de emitir notas de credito.');
@@ -172,8 +172,8 @@ router.post('/', async (req, res) => {
       tipoComprobante: '04',
       ruc: companyRes.rows[0].ruc,
       ambiente: '1',
-      establecimiento: '001',
-      puntoEmision: '001',
+      establecimiento: branch.codigo_establecimiento,
+      puntoEmision: branch.punto_emision,
       secuencial: nextSeq,
     });
 
