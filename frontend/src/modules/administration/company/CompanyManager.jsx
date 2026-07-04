@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import Swal from 'sweetalert2';
-import { apiFetch, readApiResponse } from '../../../lib/api';
+import { apiFetch, apiUrl, readApiResponse } from '../../../lib/api';
 
 export default function CompanyManager() {
   const [loading, setLoading] = useState(false);
@@ -23,7 +23,9 @@ export default function CompanyManager() {
   const [sriEndpointRecepcion, setSriEndpointRecepcion] = useState('');
   const [sriEndpointAutorizacion, setSriEndpointAutorizacion] = useState('');
   const [certificateFile, setCertificateFile] = useState(null);
+  const [logoFile, setLogoFile] = useState(null);
   const [uploadingCertificate, setUploadingCertificate] = useState(false);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
   const [checkingSri, setCheckingSri] = useState(false);
   const [sriChecks, setSriChecks] = useState([]);
 
@@ -160,6 +162,37 @@ export default function CompanyManager() {
       setUploadingCertificate(false);
     }
   };
+
+  const handleLogoUpload = async () => {
+    if (!logoFile) {
+      showAlert('Seleccione una imagen para el logo.', 'error');
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append('logo', logoFile);
+
+    setUploadingLogo(true);
+    try {
+      const response = await apiFetch('/api/company/logo', {
+        method: 'POST',
+        body: formData,
+      });
+      const result = await readApiResponse(response);
+      if (!response.ok) throw new Error(result.error || 'No se pudo cargar el logo.');
+      setLogoUrl(result.logo_url || '');
+      setLogoFile(null);
+      showAlert('Logo cargado correctamente. Guarde la configuracion para confirmar los cambios.', 'success');
+    } catch (error) {
+      showAlert(error.message, 'error');
+    } finally {
+      setUploadingLogo(false);
+    }
+  };
+
+  const logoPreviewUrl = logoUrl
+    ? (logoUrl.startsWith('/uploads/') ? apiUrl(logoUrl) : logoUrl)
+    : '';
 
   const saveCurrentCompanyBeforeSriCheck = async () => {
     if (!ruc.trim() || ruc.length !== 13) {
@@ -354,7 +387,7 @@ export default function CompanyManager() {
                 <h5 className="mb-3 text-dark fw-bold">Parametros electronicos SRI</h5>
                 <div className="row mb-3">
                   <div className="col-md-4">
-                    <label className="form-label fw-semibold text-secondary">Logo / URL</label>
+                    <label className="form-label fw-semibold text-secondary">Logo</label>
                     <input
                       type="text"
                       className="form-control"
@@ -362,6 +395,28 @@ export default function CompanyManager() {
                       onChange={(e) => setLogoUrl(e.target.value)}
                       placeholder="https://.../logo.png"
                     />
+                    <div className="d-flex align-items-center gap-2 mt-2">
+                      <input
+                        type="file"
+                        className="form-control"
+                        accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp"
+                        onChange={(e) => setLogoFile(e.target.files?.[0] || null)}
+                      />
+                      <button
+                        type="button"
+                        className="btn btn-outline-primary"
+                        onClick={handleLogoUpload}
+                        disabled={uploadingLogo || !logoFile}
+                        style={{ whiteSpace: 'nowrap' }}
+                      >
+                        {uploadingLogo ? 'Cargando...' : 'Subir'}
+                      </button>
+                    </div>
+                    {logoPreviewUrl && (
+                      <div className="mt-2 border rounded bg-white d-inline-flex align-items-center justify-content-center" style={{ width: '120px', height: '56px', padding: '6px' }}>
+                        <img src={logoPreviewUrl} alt="Logo empresa" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
+                      </div>
+                    )}
                   </div>
                   <div className="col-md-4">
                     <label className="form-label fw-semibold text-secondary">Ambiente SRI</label>

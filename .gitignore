@@ -10,6 +10,7 @@ node_modules/
 /backend/.env
 /frontend/.env
 /backend/certificates/
+/backend/uploads/
 
 # Compilaciones y dist
 /frontend/dist/

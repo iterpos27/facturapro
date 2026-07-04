@@ -58,11 +58,14 @@ router.get('/:id', async (req, res) => {
       SELECT f.*, c.name as cliente_nombre, c.identification_number as cliente_identificacion,
              c.email as cliente_email, c.phone as cliente_telefono, c.address as cliente_direccion,
              s.codigo_establecimiento, s.punto_emision, s.nombre as sucursal_nombre,
-             mp.nombre as metodo_pago_nombre
+             s.direccion as sucursal_direccion,
+             mp.nombre as metodo_pago_nombre,
+             u.username
       FROM facturas f
       JOIN clients c ON f.id_cliente = c.id
       JOIN sucursales s ON f.id_sucursal = s.id_sucursal
       LEFT JOIN metodos_pago mp ON f.id_metodo_pago = mp.id_metodo
+      LEFT JOIN usuarios u ON f.id_usuario = u.id_usuario
       WHERE f.id_factura = $1
     `, [req.params.id]);
 

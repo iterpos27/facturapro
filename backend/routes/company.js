@@ -10,6 +10,10 @@ const certificatesDir = path.resolve(__dirname, '..', 'certificates');
 if (!fs.existsSync(certificatesDir)) {
   fs.mkdirSync(certificatesDir, { recursive: true });
 }
+const logosDir = path.resolve(__dirname, '..', 'uploads', 'company');
+if (!fs.existsSync(logosDir)) {
+  fs.mkdirSync(logosDir, { recursive: true });
+}
 
 const certificateStorage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, certificatesDir),
@@ -26,6 +30,26 @@ const certificateUpload = multer({
     const extension = path.extname(file.originalname).toLowerCase();
     if (!['.p12', '.pfx'].includes(extension)) {
       return cb(new Error('Solo se permiten certificados .p12 o .pfx.'));
+    }
+    return cb(null, true);
+  },
+});
+
+const logoStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, logosDir),
+  filename: (_req, file, cb) => {
+    const extension = path.extname(file.originalname).toLowerCase();
+    cb(null, `logo-${Date.now()}${extension}`);
+  },
+});
+
+const logoUpload = multer({
+  storage: logoStorage,
+  limits: { fileSize: 2 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const extension = path.extname(file.originalname).toLowerCase();
+    if (!['.png', '.jpg', '.jpeg', '.webp'].includes(extension)) {
+      return cb(new Error('Solo se permiten logos .png, .jpg, .jpeg o .webp.'));
     }
     return cb(null, true);
   },
@@ -150,6 +174,31 @@ router.post('/certificate', certificateUpload.single('certificate'), async (req,
   } catch (error) {
     console.error('Error al cargar certificado:', error);
     res.status(500).json({ error: 'No se pudo guardar el certificado.' });
+  }
+});
+
+router.post('/logo', logoUpload.single('logo'), async (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ error: 'Seleccione una imagen para el logo.' });
+  }
+
+  try {
+    const relativePath = `/${path.relative(path.resolve(__dirname, '..'), req.file.path).replace(/\\/g, '/')}`;
+    const checkCompany = await db.query('SELECT id_empresa FROM empresas LIMIT 1');
+    if (checkCompany.rows.length > 0) {
+      await db.query(
+        'UPDATE empresas SET logo_url = $1, updated_at = CURRENT_TIMESTAMP WHERE id_empresa = $2',
+        [relativePath, checkCompany.rows[0].id_empresa]
+      );
+    }
+
+    res.status(201).json({
+      logo_url: relativePath,
+      filename: req.file.filename,
+    });
+  } catch (error) {
+    console.error('Error al cargar logo:', error);
+    res.status(500).json({ error: 'No se pudo guardar el logo.' });
   }
 });
 

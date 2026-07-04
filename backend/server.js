@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const rateLimit = require('express-rate-limit');
+const path = require('path');
 require('dotenv').config();
 
 const logger = require('./logger');
@@ -32,6 +33,7 @@ const apiLimiter = rateLimit({
 // Middleware
 app.use(cors(corsOrigin ? { origin: corsOrigin.split(',').map((origin) => origin.trim()) } : undefined));
 app.use(express.json());
+app.use('/uploads', express.static(path.resolve(__dirname, 'uploads')));
 app.use('/api', apiLimiter);
 
 // Rutas de sistema
