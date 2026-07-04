@@ -50,6 +50,12 @@ function generarClaveAccesoSRI({
   return `${claveSinDigito}${digitoVerificador}`;
 }
 
+function claveAccesoPerteneceAlRuc(claveAcceso, ruc) {
+  const clave = String(claveAcceso || '').trim();
+  const rucStr = String(ruc || '').trim();
+  return /^\d{49}$/.test(clave) && /^\d{13}$/.test(rucStr) && clave.slice(10, 23) === rucStr;
+}
+
 const normalizeText = (value, fallback = '') => String(value ?? fallback).trim();
 const money = (value) => (Math.round((parseFloat(value) || 0) * 100) / 100).toFixed(2);
 const quantity = (value) => (Math.round((parseFloat(value) || 0) * 1000000) / 1000000).toFixed(6);
@@ -105,8 +111,12 @@ function buildFacturaXml({ invoice, details = [], payments = [], company, ambien
   const serie = parseSerie(invoice.numero_factura);
   const ambienteCode = getAmbienteCode(ambiente);
   const tipoEmision = normalizeText(company.tipo_emision).toUpperCase() === 'INDISPONIBILIDAD' ? '2' : '1';
-  const ruc = normalizeText(company.ruc, '9999999999999').padEnd(13, '0').slice(0, 13);
-  const claveAcceso = invoice.clave_acceso || generarClaveAccesoSRI({
+  const ruc = normalizeText(company.ruc);
+  if (!/^\d{13}$/.test(ruc)) {
+    throw new Error('Configure un RUC de empresa valido para generar XML SRI.');
+  }
+  const claveActual = normalizeText(invoice.clave_acceso);
+  const claveAcceso = claveAccesoPerteneceAlRuc(claveActual, ruc) ? claveActual : generarClaveAccesoSRI({
     fechaEmision: invoice.fecha_emision || new Date(),
     tipoComprobante: '01',
     ruc,
@@ -250,6 +260,7 @@ function simularAutorizacionSRI(claveAcceso) {
 
 module.exports = {
   generarClaveAccesoSRI,
+  claveAccesoPerteneceAlRuc,
   buildFacturaXml,
   escapeXml,
   simularAutorizacionSRI,

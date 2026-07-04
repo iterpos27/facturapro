@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 const { writeAudit } = require('../audit');
-const { buildFacturaXml } = require('../sri_utils');
+const { buildFacturaXml, claveAccesoPerteneceAlRuc } = require('../sri_utils');
 const {
   getSriEndpoints,
   validateCertificateConfig,
@@ -17,6 +17,15 @@ router.use(authenticateToken);
 router.use(authorizeRoles('ADMINISTRADOR', 'CONTADOR'));
 
 const getCurrentUserId = (req) => req.user?.id_usuario || req.user?.id || null;
+const normalize = (value) => String(value || '').trim();
+
+function sriRecordMatchesCompany(sri, company) {
+  const ruc = normalize(company.ruc);
+  if (!sri?.xml_generado || !claveAccesoPerteneceAlRuc(sri.clave_acceso, ruc)) {
+    return false;
+  }
+  return sri.xml_generado.includes(`<ruc>${ruc}</ruc>`) && sri.xml_generado.includes(sri.clave_acceso);
+}
 
 async function loadInvoiceForSri(client, idFactura) {
   const invoiceRes = await client.query(`
@@ -75,16 +84,20 @@ async function ensureGeneratedInvoiceXml(client, idFactura, company) {
     WHERE tipo_comprobante = '01' AND id_documento = $1
   `, [idFactura]);
 
-  if (sriRes.rows[0]?.xml_generado) {
-    return sriRes.rows[0];
-  }
-
   const { invoice, details, payments } = await loadInvoiceForSri(client, idFactura);
   if (invoice.estado === 'ANULADA') {
     throw new Error('No se puede procesar SRI para una factura anulada.');
   }
   if (details.length === 0) {
     throw new Error('La factura no tiene detalles para generar XML SRI.');
+  }
+
+  const existingSri = sriRes.rows[0];
+  if (existingSri?.estado === 'AUTORIZADO') {
+    return existingSri;
+  }
+  if (sriRecordMatchesCompany(existingSri, company)) {
+    return existingSri;
   }
 
   const ambiente = 'PRUEBAS';
@@ -109,6 +122,9 @@ async function ensureGeneratedInvoiceXml(client, idFactura, company) {
       ambiente = EXCLUDED.ambiente,
       estado = 'GENERADO',
       xml_generado = EXCLUDED.xml_generado,
+      xml_firmado = NULL,
+      numero_autorizacion = NULL,
+      fecha_autorizacion = NULL,
       mensajes = '[]'::jsonb,
       updated_at = CURRENT_TIMESTAMP
     RETURNING *
@@ -120,6 +136,8 @@ async function ensureGeneratedInvoiceXml(client, idFactura, company) {
         xml_generado = $3,
         sri_estado = 'GENERADO',
         sri_ambiente = $4,
+        sri_numero_autorizacion = NULL,
+        sri_fecha_autorizacion = NULL,
         sri_mensajes = '[]'::jsonb
     WHERE id_factura = $1
   `, [invoice.id_factura, claveAcceso, xml, ambiente]);
@@ -215,6 +233,9 @@ router.post('/invoices/:id/generate-test-xml', async (req, res) => {
         ambiente = EXCLUDED.ambiente,
         estado = 'GENERADO',
         xml_generado = EXCLUDED.xml_generado,
+        xml_firmado = NULL,
+        numero_autorizacion = NULL,
+        fecha_autorizacion = NULL,
         mensajes = '[]'::jsonb,
         updated_at = CURRENT_TIMESTAMP
       RETURNING *
@@ -226,6 +247,8 @@ router.post('/invoices/:id/generate-test-xml', async (req, res) => {
           xml_generado = $3,
           sri_estado = 'GENERADO',
           sri_ambiente = $4,
+          sri_numero_autorizacion = NULL,
+          sri_fecha_autorizacion = NULL,
           sri_mensajes = '[]'::jsonb
       WHERE id_factura = $1
     `, [invoice.id_factura, claveAcceso, xml, ambiente]);
