@@ -37,8 +37,8 @@ export default function CreditNotesManager() {
     try {
       const response = await apiFetch('/api/credit-notes');
       if (!response.ok) throw new Error('Error al consultar las notas de crédito.');
-      const data = await response.json();
-      setCreditNotes(data);
+      const result = await response.json();
+      setCreditNotes(Array.isArray(result) ? result : (result.data || []));
     } catch (error) {
       console.error(error);
       showAlert('No se pudieron cargar las notas de crédito.', 'error');

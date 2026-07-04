@@ -42,8 +42,8 @@ export default function PurchaseManager() {
     try {
       const response = await apiFetch('/api/purchases');
       if (!response.ok) throw new Error('Error al conectar con la base de datos.');
-      const data = await response.json();
-      setPurchases(data);
+      const result = await response.json();
+      setPurchases(Array.isArray(result) ? result : (result.data || []));
     } catch (error) {
       console.error(error);
       showAlert('No se pudieron cargar las compras.', 'error');

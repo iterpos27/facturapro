@@ -38,8 +38,8 @@ export default function WithholdingsManager() {
     try {
       const response = await apiFetch('/api/withholdings');
       if (!response.ok) throw new Error('Error al consultar los comprobantes de retención.');
-      const data = await response.json();
-      setWithholdings(data);
+      const result = await response.json();
+      setWithholdings(Array.isArray(result) ? result : (result.data || []));
     } catch (error) {
       console.error(error);
       showAlert('No se pudieron cargar las retenciones.', 'error');

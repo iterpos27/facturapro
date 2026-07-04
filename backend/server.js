@@ -34,12 +34,6 @@ app.use(cors(corsOrigin ? { origin: corsOrigin.split(',').map((origin) => origin
 app.use(express.json());
 app.use('/api', apiLimiter);
 
-// Logger de requests HTTP
-app.use((req, _res, next) => {
-  logger.debug({ method: req.method, url: req.originalUrl }, 'request');
-  next();
-});
-
 // Rutas de sistema
 app.get('/', (_req, res) => {
   res.json({ message: 'API de Facturapro funcionando' });

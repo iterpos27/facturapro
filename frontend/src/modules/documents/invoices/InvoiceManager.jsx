@@ -86,8 +86,9 @@ export default function InvoiceManager({ onRedirectToCash }) {
     try {
       const response = await apiFetch('/api/invoices');
       if (!response.ok) throw new Error('Error al conectar con la base de datos.');
-      const data = await response.json();
-      setInvoices(data);
+      const result = await response.json();
+      // La API devuelve { data: [], total, page, limit, pages }
+      setInvoices(Array.isArray(result) ? result : (result.data || []));
     } catch (error) {
       console.error(error);
     } finally {

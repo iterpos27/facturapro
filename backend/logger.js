@@ -1,17 +1,19 @@
 /**
  * logger.js
- * Logger centralizado con pino. Usa pretty-print en desarrollo
- * y JSON estructurado en producción para facilitar la ingesta por
- * herramientas como Datadog, Loki, etc.
+ * Logger centralizado con pino.
+ * - En producción: JSON estructurado (rápido, para ingestión por Datadog/Loki).
+ * - En desarrollo: salida simple a consola sin pretty-print para evitar overhead.
  */
 const pino = require('pino');
 
 const isDev = process.env.NODE_ENV !== 'production';
 
-const logger = pino(
-  isDev
+const logger = pino({
+  level: process.env.LOG_LEVEL || (isDev ? 'info' : 'info'),
+  // En desarrollo usamos el transport de pino-pretty sólo si se activa
+  // la variable PRETTY_LOGS=true, de lo contrario salida JSON estándar
+  ...(isDev && process.env.PRETTY_LOGS === 'true'
     ? {
-        level: process.env.LOG_LEVEL || 'debug',
         transport: {
           target: 'pino-pretty',
           options: {
@@ -21,9 +23,7 @@ const logger = pino(
           },
         },
       }
-    : {
-        level: process.env.LOG_LEVEL || 'info',
-      }
-);
+    : {}),
+});
 
 module.exports = logger;
