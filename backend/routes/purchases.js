@@ -3,6 +3,7 @@ const router = express.Router();
 const db = require('../db');
 const { writeAudit } = require('../audit');
 const { authenticateToken, authorizeRoles } = require('./auth');
+const { validate, schemas } = require('../middleware/validate');
 
 // Proteger todas las rutas de compras con autenticación y autorización
 router.use(authenticateToken);
@@ -10,15 +11,23 @@ router.use(authorizeRoles('ADMINISTRADOR', 'CONTADOR'));
 
 // 1. Obtener listado de compras (GET /api/purchases)
 router.get('/', async (req, res) => {
+  const page  = Math.max(parseInt(req.query.page  || '1',  10), 1);
+  const limit = Math.min(parseInt(req.query.limit || '50', 10), 200);
+  const offset = (page - 1) * limit;
   try {
-    const result = await db.query(`
-      SELECT c.*, p.nombre AS proveedor_nombre, p.identificacion AS proveedor_identificacion, u.username
-      FROM compras c
-      JOIN proveedores p ON c.id_proveedor = p.id_proveedor
-      JOIN usuarios u ON c.id_usuario = u.id_usuario
-      ORDER BY c.fecha_compra DESC
-    `);
-    res.json(result.rows);
+    const [dataRes, countRes] = await Promise.all([
+      db.query(`
+        SELECT c.*, p.nombre AS proveedor_nombre, p.identificacion AS proveedor_identificacion, u.username
+        FROM compras c
+        JOIN proveedores p ON c.id_proveedor = p.id_proveedor
+        JOIN usuarios u ON c.id_usuario = u.id_usuario
+        ORDER BY c.fecha_compra DESC
+        LIMIT $1 OFFSET $2
+      `, [limit, offset]),
+      db.query('SELECT COUNT(*) FROM compras'),
+    ]);
+    const total = parseInt(countRes.rows[0].count, 10);
+    res.json({ data: dataRes.rows, total, page, limit, pages: Math.ceil(total / limit) });
   } catch (error) {
     console.error('Error al obtener compras:', error);
     res.status(500).json({ error: 'Error al consultar las compras.' });
@@ -66,7 +75,6 @@ router.post('/', async (req, res) => {
   const {
     numero_factura_compra,
     id_proveedor,
-    id_usuario,
     subtotal_iva_cero,
     subtotal_con_iva,
     descuento_total,
@@ -75,8 +83,9 @@ router.post('/', async (req, res) => {
     observacion,
     items,
   } = req.body || {};
+  const id_usuario = req.user.id_usuario;
 
-  if (!numero_factura_compra || !id_proveedor || !id_usuario || !items || items.length === 0) {
+  if (!numero_factura_compra || !id_proveedor || !items || items.length === 0) {
     return res.status(400).json({ error: 'Faltan datos obligatorios para registrar la compra.' });
   }
 
@@ -166,9 +175,10 @@ router.post('/', async (req, res) => {
 
 router.put('/:id/cancel', async (req, res) => {
   const { id } = req.params;
-  const { id_usuario, reason } = req.body || {};
+  const { reason } = req.body || {};
+  const id_usuario = req.user.id_usuario;
 
-  if (!id_usuario || !String(reason || '').trim()) {
+  if (!String(reason || '').trim()) {
     return res.status(400).json({ error: 'Usuario y motivo de anulacion son obligatorios.' });
   }
 

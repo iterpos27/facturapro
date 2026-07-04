@@ -1,29 +1,26 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { apiFetch, AUTH_LOGOUT_EVENT, clearSession } from '../lib/api';
 import {
   DEFAULT_MENU_STATE,
   MENU_STATE_STORAGE_KEY,
-  ACTIVE_TAB_STORAGE_KEY,
-  TAB_SECTION_MAP,
   getPermissions,
 } from '../lib/permissions';
 
 /**
  * useAppState
- * Custom hook que centraliza todo el estado de la aplicación:
+ * Custom hook que centraliza el estado de la aplicación:
  * - Sesión de usuario (JWT restaurado desde localStorage)
  * - Tema claro/oscuro
  * - Visibilidad del sidebar
  * - Estado de secciones del menú (abiertas/cerradas)
- * - Tab activo y navegación
+ * - Navegación vía react-router
  */
 export function useAppState() {
+  const navigate = useNavigate();
+
   const [currentUser, setCurrentUser] = useState(null);
   const [sessionLoading, setSessionLoading] = useState(true);
-
-  const [activeTab, setActiveTab] = useState(
-    () => localStorage.getItem(ACTIVE_TAB_STORAGE_KEY) || 'dashboard'
-  );
 
   const [sidebarVisible, setSidebarVisible] = useState(() => {
     const stored = localStorage.getItem('facturapro-sidebar-visible');
@@ -57,10 +54,6 @@ export function useAppState() {
   useEffect(() => {
     localStorage.setItem('facturapro-sidebar-visible', JSON.stringify(sidebarVisible));
   }, [sidebarVisible]);
-
-  useEffect(() => {
-    localStorage.setItem(ACTIVE_TAB_STORAGE_KEY, activeTab);
-  }, [activeTab]);
 
   // ── Restaurar sesión al cargar ───────────────────────────────────────────────
   useEffect(() => {
@@ -110,8 +103,8 @@ export function useAppState() {
   const handleLogout = () => {
     clearSession();
     setCurrentUser(null);
-    setActiveTab('dashboard');
     setSessionLoading(false);
+    navigate('/');
   };
 
   const toggleTheme = () =>
@@ -120,13 +113,9 @@ export function useAppState() {
   const toggleMenuSection = (section) =>
     setMenuOpen((current) => ({ ...current, [section]: !current[section] }));
 
-  const handleNavigate = (tab) => {
+  const handleNavigate = (path) => {
     if (window.innerWidth < 768) setSidebarVisible(false);
-    const sectionKey = TAB_SECTION_MAP[tab];
-    if (sectionKey) {
-      setMenuOpen((current) => ({ ...current, [sectionKey]: true }));
-    }
-    setActiveTab(tab);
+    navigate(path);
   };
 
   const permissions = getPermissions(currentUser?.rol_nombre);
@@ -135,7 +124,6 @@ export function useAppState() {
     currentUser,
     setCurrentUser,
     sessionLoading,
-    activeTab,
     sidebarVisible,
     setSidebarVisible,
     theme,

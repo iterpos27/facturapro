@@ -1,4 +1,5 @@
 import React from 'react';
+import { BrowserRouter } from 'react-router-dom';
 import { CContainer, CFooter } from '@coreui/react';
 
 import Login from './modules/auth/Login';
@@ -8,16 +9,15 @@ import AppContent from './components/AppContent';
 import { useAppState } from './hooks/useAppState';
 
 /**
- * App
- * Componente raíz. Orquesta el estado global (useAppState) y ensambla
- * los tres bloques principales de la interfaz: sidebar, header y contenido.
+ * AppShell
+ * Componente interno que usa el hook useAppState (requiere BrowserRouter como padre).
+ * Separa la lógica de routing del BrowserRouter para poder usar useNavigate dentro del hook.
  */
-function App() {
+function AppShell() {
   const {
     currentUser,
     setCurrentUser,
     sessionLoading,
-    activeTab,
     sidebarVisible,
     setSidebarVisible,
     theme,
@@ -52,10 +52,8 @@ function App() {
       <AppSidebar
         visible={sidebarVisible}
         onVisibleChange={(v) => setSidebarVisible(v)}
-        activeTab={activeTab}
         menuOpen={menuOpen}
         permissions={permissions}
-        onNavigate={handleNavigate}
         onToggleSection={toggleMenuSection}
       />
 
@@ -71,7 +69,6 @@ function App() {
         <div className="body flex-grow-1 px-4">
           <CContainer fluid className="app-content-frame">
             <AppContent
-              activeTab={activeTab}
               permissions={permissions}
               currentUser={currentUser}
               onNavigate={handleNavigate}
@@ -89,6 +86,18 @@ function App() {
         </CFooter>
       </div>
     </div>
+  );
+}
+
+/**
+ * App
+ * Envuelve AppShell con BrowserRouter para habilitar react-router en toda la app.
+ */
+function App() {
+  return (
+    <BrowserRouter>
+      <AppShell />
+    </BrowserRouter>
   );
 }
 

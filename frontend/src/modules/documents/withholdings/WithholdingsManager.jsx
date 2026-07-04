@@ -187,7 +187,7 @@ export default function WithholdingsManager() {
       const response = await apiFetch(`/api/withholdings/${withholding.id_retencion}/cancel`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id_usuario: currentUser?.id_usuario, reason }),
+        body: JSON.stringify({ reason }),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'No se pudo anular la retencion.');
@@ -238,7 +238,6 @@ export default function WithholdingsManager() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           id_compra: parseInt(selectedPurchaseId, 10),
-          id_usuario: currentUser.id_usuario,
           details: withholdingRows,
         }),
       });

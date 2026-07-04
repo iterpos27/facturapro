@@ -1,4 +1,5 @@
 import React from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import {
   CSidebar,
   CSidebarBrand,
@@ -23,18 +24,27 @@ import {
 
 /**
  * AppSidebar
- * Sidebar de navegación con secciones colapsables por grupo de módulo.
- * Filtra las opciones visibles según el objeto `permissions` del rol activo.
+ * Sidebar de navegación con secciones colapsables.
+ * Usa react-router useNavigate para navegación programática
+ * y useLocation para resaltar el link activo.
  */
 export default function AppSidebar({
   visible,
   onVisibleChange,
-  activeTab,
   menuOpen,
   permissions,
-  onNavigate,
   onToggleSection,
 }) {
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  const isActive = (path) => location.pathname === path;
+
+  const handleNav = (path) => {
+    if (window.innerWidth < 768) onVisibleChange(false);
+    navigate(path);
+  };
+
   const renderSection = (key, label, items) => (
     <div className="app-sidebar-section" key={key}>
       <button
@@ -49,12 +59,12 @@ export default function AppSidebar({
     </div>
   );
 
-  const navLink = (tab, icon, label) => (
-    <CNavItem key={tab}>
+  const navLink = (path, icon, label) => (
+    <CNavItem key={path}>
       <CNavLink
         className="app-nav-link"
-        active={activeTab === tab}
-        onClick={() => onNavigate(tab)}
+        active={isActive(path)}
+        onClick={() => handleNav(path)}
         style={{ cursor: 'pointer' }}
       >
         <CIcon icon={icon} className="nav-icon" /> {label}
@@ -82,8 +92,8 @@ export default function AppSidebar({
         <CNavItem>
           <CNavLink
             className="app-nav-link"
-            active={activeTab === 'dashboard'}
-            onClick={() => onNavigate('dashboard')}
+            active={isActive('/')}
+            onClick={() => handleNav('/')}
             style={{ cursor: 'pointer' }}
           >
             <CIcon icon={cilSpeedometer} className="nav-icon" /> Dashboard
@@ -94,8 +104,8 @@ export default function AppSidebar({
         {(permissions.clients || permissions.suppliers) &&
           renderSection('contactos', 'Contactos', (
             <>
-              {permissions.clients && navLink('clients', cilUser, 'Clientes')}
-              {permissions.suppliers && navLink('suppliers', cilUserFollow, 'Proveedores')}
+              {permissions.clients    && navLink('/clientes',    cilUser,       'Clientes')}
+              {permissions.suppliers  && navLink('/proveedores', cilUserFollow, 'Proveedores')}
             </>
           ))}
 
@@ -103,10 +113,10 @@ export default function AppSidebar({
         {(permissions.products || permissions.categories || permissions.inventory || permissions.purchases) &&
           renderSection('inventario', 'Inventario', (
             <>
-              {permissions.products && navLink('products', cilBasket, 'Productos')}
-              {permissions.categories && navLink('categories', cilFolder, 'Categorías')}
-              {permissions.inventory && navLink('inventory', cilList, 'Inventario')}
-              {permissions.purchases && navLink('purchases', cilBasket, 'Compras')}
+              {permissions.products   && navLink('/productos',  cilBasket, 'Productos')}
+              {permissions.categories && navLink('/categorias', cilFolder,  'Categorías')}
+              {permissions.inventory  && navLink('/inventario', cilList,    'Inventario')}
+              {permissions.purchases  && navLink('/compras',    cilBasket,  'Compras')}
             </>
           ))}
 
@@ -115,12 +125,12 @@ export default function AppSidebar({
           permissions.creditnotes || permissions.withholdings || permissions.reports) &&
           renderSection('documentos', 'Documentos', (
             <>
-              {permissions.proformas && navLink('proformas', cilFile, 'Proformas')}
-              {permissions.invoices && navLink('invoices', cilFile, 'Facturación')}
-              {permissions.receivables && navLink('receivables', cilFile, 'CxC y Cobros')}
-              {permissions.creditnotes && navLink('creditnotes', cilFile, 'Notas de Crédito')}
-              {permissions.withholdings && navLink('withholdings', cilFile, 'Retenciones')}
-              {permissions.reports && navLink('reports', cilSpeedometer, 'Reportes')}
+              {permissions.proformas    && navLink('/proformas',      cilFile,         'Proformas')}
+              {permissions.invoices     && navLink('/facturas',       cilFile,         'Facturación')}
+              {permissions.receivables  && navLink('/cuentas-cobrar', cilFile,         'CxC y Cobros')}
+              {permissions.creditnotes  && navLink('/notas-credito',  cilFile,         'Notas de Crédito')}
+              {permissions.withholdings && navLink('/retenciones',    cilFile,         'Retenciones')}
+              {permissions.reports      && navLink('/reportes',       cilSpeedometer,  'Reportes')}
             </>
           ))}
 
@@ -128,20 +138,20 @@ export default function AppSidebar({
         {(permissions.cash || permissions.company || permissions.branches || permissions.audit) &&
           renderSection('configuracion', 'Configuración / Caja', (
             <>
-              {permissions.cash && navLink('cash', cilSpeedometer, 'Caja Chica')}
-              {permissions.company && navLink('company', cilSettings, 'Config. Empresa')}
-              {permissions.branches && navLink('branches', cilHome, 'Sucursales')}
-              {permissions.audit && navLink('audit', cilList, 'Auditoria')}
+              {permissions.cash     && navLink('/caja',       cilSpeedometer, 'Caja Chica')}
+              {permissions.company  && navLink('/empresa',    cilSettings,    'Config. Empresa')}
+              {permissions.branches && navLink('/sucursales', cilHome,        'Sucursales')}
+              {permissions.audit    && navLink('/auditoria',  cilList,        'Auditoria')}
             </>
           ))}
 
-        {/* Usuarios (sólo ADMINISTRADOR) */}
+        {/* Usuarios */}
         {permissions.users && (
           <CNavItem>
             <CNavLink
               className="app-nav-link"
-              active={activeTab === 'users'}
-              onClick={() => onNavigate('users')}
+              active={isActive('/usuarios')}
+              onClick={() => handleNav('/usuarios')}
               style={{ cursor: 'pointer' }}
             >
               <CIcon icon={cilPeople} className="nav-icon" /> Usuarios

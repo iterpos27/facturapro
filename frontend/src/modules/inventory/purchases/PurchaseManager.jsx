@@ -120,7 +120,7 @@ export default function PurchaseManager() {
       const response = await apiFetch(`/api/purchases/${purchase.id_compra}/cancel`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id_usuario: currentUser?.id_usuario, reason }),
+        body: JSON.stringify({ reason }),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'No se pudo anular la compra.');
@@ -263,7 +263,6 @@ export default function PurchaseManager() {
     const payload = {
       numero_factura_compra: invoiceNumber,
       id_proveedor: parseInt(selectedSupplier, 10),
-      id_usuario: currentUser.id_usuario,
       subtotal_iva_cero: totals.subtotalIvaCero,
       subtotal_con_iva: totals.subtotalConIva,
       descuento_total: 0,

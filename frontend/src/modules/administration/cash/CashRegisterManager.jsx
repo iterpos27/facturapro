@@ -111,7 +111,6 @@ export default function CashRegisterManager() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           id_caja: parseInt(selectedBox, 10),
-          id_usuario: currentUser.id_usuario,
           monto_apertura: openAmount,
           apertura_billetes: Number(aperturaBilletes || 0),
           apertura_monedas: Number(aperturaMonedas || 0),

@@ -167,7 +167,7 @@ export default function CreditNotesManager() {
       const response = await apiFetch(`/api/credit-notes/${nc.id_nota_credito}/cancel`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id_usuario: currentUser?.id_usuario, reason: reasonText }),
+        body: JSON.stringify({ reason: reasonText }),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'No se pudo anular la nota de credito.');
@@ -244,7 +244,6 @@ export default function CreditNotesManager() {
           id_factura: parseInt(selectedInvoiceId, 10),
           motivo: reason,
           items: itemsToReturn,
-          id_usuario: currentUser.id_usuario,
         }),
       });
 

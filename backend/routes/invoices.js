@@ -4,21 +4,30 @@ const db = require('../db');
 const { authenticateToken, authorizeRoles } = require('./auth');
 const { writeAudit } = require('../audit');
 const { generarClaveAccesoSRI } = require('../sri_utils');
+const { validate, schemas } = require('../middleware/validate');
 
 router.use(authenticateToken);
 
 const formatSequential = (num) => String(num).padStart(9, '0');
 
 router.get('/', async (req, res) => {
+  const page  = Math.max(parseInt(req.query.page  || '1',  10), 1);
+  const limit = Math.min(parseInt(req.query.limit || '50', 10), 200);
+  const offset = (page - 1) * limit;
   try {
-    const result = await db.query(`
-      SELECT f.*, c.name as cliente_nombre, c.identification_number as cliente_identificacion, u.username
-      FROM facturas f
-      JOIN clients c ON f.id_cliente = c.id
-      LEFT JOIN usuarios u ON f.id_usuario = u.id_usuario
-      ORDER BY f.fecha_emision DESC
-    `);
-    res.json(result.rows);
+    const [dataRes, countRes] = await Promise.all([
+      db.query(`
+        SELECT f.*, c.name as cliente_nombre, c.identification_number as cliente_identificacion, u.username
+        FROM facturas f
+        JOIN clients c ON f.id_cliente = c.id
+        LEFT JOIN usuarios u ON f.id_usuario = u.id_usuario
+        ORDER BY f.fecha_emision DESC
+        LIMIT $1 OFFSET $2
+      `, [limit, offset]),
+      db.query('SELECT COUNT(*) FROM facturas'),
+    ]);
+    const total = parseInt(countRes.rows[0].count, 10);
+    res.json({ data: dataRes.rows, total, page, limit, pages: Math.ceil(total / limit) });
   } catch (error) {
     console.error('Error al obtener facturas:', error);
     res.status(500).json({ error: 'Error al consultar facturas emitidas.' });
@@ -104,8 +113,9 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-router.post('/', async (req, res) => {
-  const { id_cliente, id_usuario, id_metodo_pago, id_proforma, items, monto_pago, anticipo, observacion, payments } = req.body;
+router.post('/', validate(schemas.createInvoice), async (req, res) => {
+  const { id_cliente, id_metodo_pago, id_proforma, items, monto_pago, anticipo, observacion, payments } = req.body;
+  const id_usuario = req.user.id_usuario;
 
   const normalizedPayments = Array.isArray(payments)
     ? payments
@@ -376,11 +386,8 @@ router.post('/', async (req, res) => {
 
 router.put('/:id/cancel', authorizeRoles('ADMINISTRADOR', 'CONTADOR'), async (req, res) => {
   const { id } = req.params;
-  const { id_usuario, reason } = req.body;
-
-  if (!id_usuario) {
-    return res.status(400).json({ error: 'El ID de usuario es requerido para anular.' });
-  }
+  const { reason } = req.body;
+  const id_usuario = req.user.id_usuario;
   if (!String(reason || '').trim()) {
     return res.status(400).json({ error: 'El motivo de anulacion es obligatorio.' });
   }
@@ -445,9 +452,10 @@ router.put('/:id/cancel', authorizeRoles('ADMINISTRADOR', 'CONTADOR'), async (re
 // Registrar un abono (cobro) a una factura con saldo pendiente (Cuentas por Cobrar)
 router.post('/:id/payments', async (req, res) => {
   const { id } = req.params;
-  const { id_metodo_pago, monto, referencia, id_usuario } = req.body || {};
+  const { id_metodo_pago, monto, referencia } = req.body || {};
+  const id_usuario = req.user.id_usuario;
 
-  if (!id_metodo_pago || !monto || parseFloat(monto) <= 0 || !id_usuario) {
+  if (!id_metodo_pago || !monto || parseFloat(monto) <= 0) {
     return res.status(400).json({ error: 'Faltan datos obligatorios para registrar el cobro.' });
   }
 

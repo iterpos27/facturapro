@@ -4,23 +4,32 @@ const db = require('../db');
 const { writeAudit } = require('../audit');
 const { generarClaveAccesoSRI } = require('../sri_utils');
 const { authenticateToken, authorizeRoles } = require('./auth');
+const { validate, schemas } = require('../middleware/validate');
 
 // Proteger todas las rutas de notas de crédito con autenticación y autorización
 router.use(authenticateToken);
 router.use(authorizeRoles('ADMINISTRADOR', 'CONTADOR'));
 
 router.get('/', async (req, res) => {
+  const page  = Math.max(parseInt(req.query.page  || '1',  10), 1);
+  const limit = Math.min(parseInt(req.query.limit || '50', 10), 200);
+  const offset = (page - 1) * limit;
   try {
-    const result = await db.query(`
-      SELECT nc.*, f.numero_factura, c.name AS cliente_nombre,
-             c.identification_number AS cliente_identificacion, u.username
-      FROM notas_credito nc
-      JOIN facturas f ON nc.id_factura = f.id_factura
-      JOIN clients c ON f.id_cliente = c.id
-      JOIN usuarios u ON nc.id_usuario = u.id_usuario
-      ORDER BY nc.fecha_emision DESC
-    `);
-    res.json(result.rows);
+    const [dataRes, countRes] = await Promise.all([
+      db.query(`
+        SELECT nc.*, f.numero_factura, c.name AS cliente_nombre,
+               c.identification_number AS cliente_identificacion, u.username
+        FROM notas_credito nc
+        JOIN facturas f ON nc.id_factura = f.id_factura
+        JOIN clients c ON f.id_cliente = c.id
+        JOIN usuarios u ON nc.id_usuario = u.id_usuario
+        ORDER BY nc.fecha_emision DESC
+        LIMIT $1 OFFSET $2
+      `, [limit, offset]),
+      db.query('SELECT COUNT(*) FROM notas_credito'),
+    ]);
+    const total = parseInt(countRes.rows[0].count, 10);
+    res.json({ data: dataRes.rows, total, page, limit, pages: Math.ceil(total / limit) });
   } catch (error) {
     console.error('Error al obtener notas de credito:', error);
     res.status(500).json({ error: 'Error al consultar las notas de credito.' });
@@ -64,9 +73,10 @@ router.get('/:id', async (req, res) => {
 });
 
 router.post('/', async (req, res) => {
-  const { id_factura, motivo, items, id_usuario } = req.body || {};
+  const { id_factura, motivo, items } = req.body || {};
+  const id_usuario = req.user.id_usuario;
 
-  if (!id_factura || !String(motivo || '').trim() || !Array.isArray(items) || items.length === 0 || !id_usuario) {
+  if (!id_factura || !String(motivo || '').trim() || !Array.isArray(items) || items.length === 0) {
     return res.status(400).json({ error: 'Faltan datos obligatorios para emitir la nota de credito.' });
   }
 
@@ -243,9 +253,10 @@ router.post('/', async (req, res) => {
 
 router.put('/:id/cancel', async (req, res) => {
   const { id } = req.params;
-  const { id_usuario, reason } = req.body || {};
+  const { reason } = req.body || {};
+  const id_usuario = req.user.id_usuario;
 
-  if (!id_usuario || !String(reason || '').trim()) {
+  if (!String(reason || '').trim()) {
     return res.status(400).json({ error: 'Usuario y motivo de anulacion son obligatorios.' });
   }
 

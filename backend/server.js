@@ -1,9 +1,12 @@
 const express = require('express');
 const cors = require('cors');
+const rateLimit = require('express-rate-limit');
 require('dotenv').config();
 
+const logger = require('./logger');
+
 if (process.env.NODE_ENV === 'production' && (!process.env.JWT_SECRET || process.env.JWT_SECRET === 'dev-only-facturapro-secret')) {
-  console.error('FATAL: Se debe configurar JWT_SECRET con un valor seguro en entornos de producción.');
+  logger.fatal('FATAL: Se debe configurar JWT_SECRET con un valor seguro en entornos de producción.');
   process.exit(1);
 }
 
@@ -13,16 +16,36 @@ const corsOrigin = process.env.CORS_ORIGIN;
 
 app.disable('x-powered-by');
 
+// Rate limiting global para todas las rutas API
+// El login tiene su propio limitador más estricto (5 req / 15 min en auth.js)
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutos
+  max: 300,                  // 300 requests por ventana por IP
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    error: 'Demasiadas solicitudes desde esta IP. Por favor, intente de nuevo en 15 minutos.',
+  },
+  skip: (req) => req.path === '/health', // no limitar el health check
+});
+
 // Middleware
 app.use(cors(corsOrigin ? { origin: corsOrigin.split(',').map((origin) => origin.trim()) } : undefined));
 app.use(express.json());
+app.use('/api', apiLimiter);
 
-// Ruta de prueba
-app.get('/', (req, res) => {
+// Logger de requests HTTP
+app.use((req, _res, next) => {
+  logger.debug({ method: req.method, url: req.originalUrl }, 'request');
+  next();
+});
+
+// Rutas de sistema
+app.get('/', (_req, res) => {
   res.json({ message: 'API de Facturapro funcionando' });
 });
 
-app.get('/health', (req, res) => {
+app.get('/health', (_req, res) => {
   res.json({ status: 'ok' });
 });
 
@@ -72,11 +95,11 @@ app.use('/api', (req, res) => {
 });
 
 // Manejo de errores global
-app.use((err, req, res, next) => {
-  console.error(err.stack);
+app.use((err, req, res, _next) => {
+  logger.error({ err, method: req.method, url: req.originalUrl }, 'Unhandled error');
   res.status(500).json({ error: 'Ocurrió un error en el servidor.' });
 });
 
 app.listen(PORT, () => {
-  console.log(`Servidor corriendo en http://localhost:${PORT}`);
+  logger.info(`Servidor corriendo en http://localhost:${PORT}`);
 });

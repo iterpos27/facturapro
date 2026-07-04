@@ -258,7 +258,6 @@ export default function InvoiceManager({ onRedirectToCash }) {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          id_usuario: currentUser.id_usuario,
           reason: reasonResult.value || '',
         }),
       });

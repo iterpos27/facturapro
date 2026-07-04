@@ -58,13 +58,14 @@ router.get('/status', async (req, res) => {
 });
 
 router.post('/open', async (req, res) => {
-  const { id_caja, id_usuario, monto_apertura, apertura_billetes, apertura_monedas } = req.body;
+  const { id_caja, monto_apertura, apertura_billetes, apertura_monedas } = req.body;
+  const id_usuario = req.user.id_usuario;
   const bills = toMoney(apertura_billetes);
   const coins = toMoney(apertura_monedas);
   const hasDenominations = apertura_billetes !== undefined || apertura_monedas !== undefined;
   const openingAmount = hasDenominations ? bills + coins : toMoney(monto_apertura);
 
-  if (!id_caja || !id_usuario) {
+  if (!id_caja) {
     return res.status(400).json({ error: 'Caja y usuario son requeridos.' });
   }
 
