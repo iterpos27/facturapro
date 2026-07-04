@@ -3,7 +3,7 @@ const path = require('path');
 const axios = require('axios');
 const forge = require('node-forge');
 const { DOMParser } = require('@xmldom/xmldom');
-const { SignedXml } = require('xml-crypto');
+const { signInvoiceXml } = require('ec-sri-invoice-signer');
 
 const SRI_TEST_RECEPTION_URL = 'https://celcer.sri.gob.ec/comprobantes-electronicos-ws/RecepcionComprobantesOffline';
 const SRI_TEST_AUTHORIZATION_URL = 'https://celcer.sri.gob.ec/comprobantes-electronicos-ws/AutorizacionComprobantesOffline';
@@ -37,13 +37,6 @@ function resolveCertificatePath(certificatePath) {
   return resolvedPath;
 }
 
-function pemBody(pem) {
-  return String(pem)
-    .replace(/-----BEGIN [^-]+-----/g, '')
-    .replace(/-----END [^-]+-----/g, '')
-    .replace(/\s+/g, '');
-}
-
 function readPkcs12Certificate(company) {
   const certificatePath = resolveCertificatePath(company.certificado_path);
   const password = normalize(company.certificado_clave);
@@ -65,8 +58,10 @@ function readPkcs12Certificate(company) {
   }
 
   return {
-    privateKeyPem: forge.pki.privateKeyToPem(keyBags[0].key),
+    privateKey: keyBags[0].key,
     certificatePem: forge.pki.certificateToPem(certBags[0].cert),
+    p12Buffer,
+    password,
   };
 }
 
@@ -81,32 +76,9 @@ function validateCertificateConfig(company) {
   };
 }
 
-function signXmlWithCertificate(xml, company) {
-  const { privateKeyPem, certificatePem } = readPkcs12Certificate(company);
-  const signer = new SignedXml({
-    privateKey: privateKeyPem,
-    publicCert: certificatePem,
-  });
-
-  signer.canonicalizationAlgorithm = 'http://www.w3.org/TR/2001/REC-xml-c14n-20010315';
-  signer.signatureAlgorithm = 'http://www.w3.org/2000/09/xmldsig#rsa-sha1';
-  signer.addReference({
-    xpath: "/*[@id='comprobante']",
-    transforms: [
-      'http://www.w3.org/2000/09/xmldsig#enveloped-signature',
-      'http://www.w3.org/TR/2001/REC-xml-c14n-20010315',
-    ],
-    digestAlgorithm: 'http://www.w3.org/2000/09/xmldsig#sha1',
-  });
-  signer.keyInfoProvider = {
-    getKeyInfo: () => `<X509Data><X509Certificate>${pemBody(certificatePem)}</X509Certificate></X509Data>`,
-  };
-
-  signer.computeSignature(xml, {
-    location: { reference: "/*[@id='comprobante']", action: 'append' },
-  });
-
-  return signer.getSignedXml();
+async function signXmlWithCertificate(xml, company) {
+  const { p12Buffer, password } = readPkcs12Certificate(company);
+  return signInvoiceXml(xml, p12Buffer, { pkcs12Password: password });
 }
 
 function getFirstText(xml, tags) {

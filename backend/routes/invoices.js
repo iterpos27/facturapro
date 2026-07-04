@@ -270,10 +270,15 @@ router.post('/', validate(schemas.createInvoice), async (req, res) => {
     const cambio = Math.max(totalPagado - totalFactura, 0);
     const saldo = Math.max(totalFactura - totalPagado, 0);
 
+    const companyRes = await client.query('SELECT ruc FROM empresas LIMIT 1');
+    if (companyRes.rows.length === 0 || !companyRes.rows[0].ruc) {
+      throw new Error('Configure el RUC de la empresa antes de emitir facturas.');
+    }
+
     const accessKey = generarClaveAccesoSRI({
       fechaEmision: new Date(),
       tipoComprobante: '01',
-      ruc: '1792345678001',
+      ruc: companyRes.rows[0].ruc,
       ambiente: '1',
       establecimiento: codigo_establecimiento,
       puntoEmision: punto_emision,

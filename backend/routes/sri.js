@@ -266,7 +266,7 @@ router.post('/invoices/:id/sign-test-xml', async (req, res) => {
 
     const company = await loadCompany(client);
     const sri = await ensureGeneratedInvoiceXml(client, req.params.id, company);
-    const signedXml = signXmlWithCertificate(sri.xml_generado, company);
+    const signedXml = await signXmlWithCertificate(sri.xml_generado, company);
 
     const updated = await client.query(`
       UPDATE sri_comprobantes
@@ -318,7 +318,7 @@ router.post('/invoices/:id/send-test', async (req, res) => {
     let sri = await ensureGeneratedInvoiceXml(client, req.params.id, company);
     let signedXml = sri.xml_firmado;
     if (!signedXml) {
-      signedXml = signXmlWithCertificate(sri.xml_generado, company);
+      signedXml = await signXmlWithCertificate(sri.xml_generado, company);
       const signedRes = await client.query(`
         UPDATE sri_comprobantes
         SET estado = 'FIRMADO',
@@ -459,7 +459,7 @@ router.post('/invoices/:id/process-test', async (req, res) => {
     let sri = await ensureGeneratedInvoiceXml(client, req.params.id, company);
     let signedXml = sri.xml_firmado;
     if (!signedXml) {
-      signedXml = signXmlWithCertificate(sri.xml_generado, company);
+      signedXml = await signXmlWithCertificate(sri.xml_generado, company);
       const signedRes = await client.query(`
         UPDATE sri_comprobantes
         SET estado = 'FIRMADO',
