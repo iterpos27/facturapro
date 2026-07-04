@@ -1,7 +1,16 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import Swal from 'sweetalert2';
-import { apiFetch } from '../../../lib/api';
+import { apiFetch, apiUrl } from '../../../lib/api';
 import { printDocument } from '../../../lib/printDocument';
+
+const money = (value) => (parseFloat(value || 0) || 0).toFixed(2);
+const qty = (value) => (parseFloat(value || 0) || 0).toFixed(2);
+
+function resolveAssetUrl(value) {
+  const url = String(value || '').trim();
+  if (!url) return '';
+  return url.startsWith('/uploads/') ? apiUrl(url) : url;
+}
 import ProductSearchInput from '../../../shared/ProductSearchInput';
 
 export default function PurchaseManager() {
@@ -677,111 +686,27 @@ export default function PurchaseManager() {
       )}
 
       {/* MODAL DETALLE DE COMPRA */}
-      {selectedPurchaseDetail && (
-        <div className="modal-overlay" onClick={() => setSelectedPurchaseDetail(null)}>
-          <div
-            className="modal-container text-dark print-document"
-            style={{ maxWidth: '800px', width: '95%' }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <button
-              className="modal-close-btn"
-              onClick={() => setSelectedPurchaseDetail(null)}
-              aria-label="Cerrar detalle"
-            >
-              X
-            </button>
-            <h2 className="fw-bold text-center mb-3">Detalle de Factura de Compra</h2>
-            <div style={{ borderTop: '2px dashed #ccc', margin: '0.75rem 0' }}></div>
+      {selectedPurchaseDetail && (() => {
+        const { purchase, details, company } = selectedPurchaseDetail;
+        const issuerName = company?.razon_social || company?.nombre_comercial || 'Empresa no configurada';
+        const tradeName = company?.nombre_comercial || issuerName;
+        const logoUrl = resolveAssetUrl(company?.logo_url);
+        const subtotalNoTax = parseFloat(purchase.subtotal_con_iva || 0) + parseFloat(purchase.subtotal_iva_cero || 0);
 
-            <div className="row small mb-3">
-              <div className="col-md-6">
-                <div><strong>PROVEEDOR:</strong> {selectedPurchaseDetail.purchase.proveedor_nombre}</div>
-                <div><strong>RUC/Cédula:</strong> {selectedPurchaseDetail.purchase.proveedor_identificacion}</div>
-                <div><strong>Email:</strong> {selectedPurchaseDetail.purchase.proveedor_email}</div>
-                <div><strong>Teléfono:</strong> {selectedPurchaseDetail.purchase.proveedor_telefono}</div>
-              </div>
-              <div className="col-md-6">
-                <div><strong>Factura Proveedor:</strong> {selectedPurchaseDetail.purchase.numero_factura_compra}</div>
-                <div><strong>Fecha Registro:</strong> {new Date(selectedPurchaseDetail.purchase.fecha_compra).toLocaleString()}</div>
-                <div><strong>Usuario Operador:</strong> {selectedPurchaseDetail.purchase.username}</div>
-                <div><strong>Estado:</strong> {selectedPurchaseDetail.purchase.estado}</div>
-              </div>
-            </div>
-
-            <div style={{ borderTop: '1px solid #eee', margin: '0.75rem 0' }}></div>
-
-            <table className="table table-sm table-striped small">
-              <thead>
-                <tr>
-                  <th>Código</th>
-                  <th>Descripción Producto</th>
-                  <th className="text-end">Cantidad</th>
-                  <th className="text-end">Costo Unit.</th>
-                  <th className="text-end">IVA</th>
-                  <th className="text-end">Total</th>
-                </tr>
-              </thead>
-              <tbody>
-                {selectedPurchaseDetail.details.map((d) => (
-                  <tr key={d.id_detalle}>
-                    <td>{d.producto_codigo}</td>
-                    <td>{d.producto_nombre}</td>
-                    <td className="text-end">{parseFloat(d.cantidad).toFixed(2)}</td>
-                    <td className="text-end">${parseFloat(d.costo_unitario).toFixed(2)}</td>
-                    <td className="text-end">${parseFloat(d.valor_iva).toFixed(2)}</td>
-                    <td className="text-end">${parseFloat(d.precio_total).toFixed(2)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-
-            <div className="row justify-content-end mt-3">
-              <div className="col-md-5 small">
-                <div className="d-flex justify-content-between">
-                  <span>Subtotal IVA 0%:</span>
-                  <span>${parseFloat(selectedPurchaseDetail.purchase.subtotal_iva_cero).toFixed(2)}</span>
-                </div>
-                <div className="d-flex justify-content-between">
-                  <span>Subtotal con IVA:</span>
-                  <span>${parseFloat(selectedPurchaseDetail.purchase.subtotal_con_iva).toFixed(2)}</span>
-                </div>
-                <div className="d-flex justify-content-between">
-                  <span>IVA Total:</span>
-                  <span>${parseFloat(selectedPurchaseDetail.purchase.valor_iva).toFixed(2)}</span>
-                </div>
-                <div className="d-flex justify-content-between fw-bold text-success border-top pt-1 mt-1">
-                  <span>Total:</span>
-                  <span>${parseFloat(selectedPurchaseDetail.purchase.total).toFixed(2)}</span>
-                </div>
-              </div>
-            </div>
-
-            {selectedPurchaseDetail.purchase.observacion && (
-              <div className="mt-3 p-2 bg-light rounded small">
-                <strong>Observaciones:</strong> {selectedPurchaseDetail.purchase.observacion}
-              </div>
-            )}
-
-            <div className="d-flex justify-content-end gap-2 mt-4 pt-3 border-top">
-              <button
-                type="button"
-                className="btn btn-outline-primary"
-                onClick={() => printDocument()}
-              >
-                Imprimir
-              </button>
-              <button
-                type="button"
-                className="btn btn-secondary"
-                onClick={() => setSelectedPurchaseDetail(null)}
-              >
-                Cerrar Detalle
-              </button>
+        return (
+          <div className="modal-overlay" onClick={() => setSelectedPurchaseDetail(null)}>
+            <div className="modal-container text-dark print-document" style={{ maxWidth: '820px', width: '96%', fontFamily: 'Arial, Helvetica, sans-serif', padding: '1.4rem', borderRadius: '6px', backgroundColor: '#ffffff', boxShadow: '0 20px 40px rgba(0,0,0,0.18)' }} onClick={(e) => e.stopPropagation()}>
+              <button className="modal-close-btn form-actions-buttons" onClick={() => setSelectedPurchaseDetail(null)} aria-label="Cerrar detalle" style={{ top: '10px', right: '10px' }}>X</button>
+              <div className="d-grid gap-2" style={{ gridTemplateColumns: '1fr 1.35fr' }}><div><div className="border d-flex align-items-center justify-content-center bg-white mb-2" style={{ width: '150px', height: '74px', padding: '6px' }}>{logoUrl ? <img src={logoUrl} alt={tradeName} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} /> : <div className="fw-bold text-center text-primary" style={{ fontSize: '0.95rem', lineHeight: 1.05 }}>{tradeName}</div>}</div><div className="border rounded-1 p-2 small" style={{ minHeight: '116px' }}><div className="fw-bold">{issuerName}</div><div><strong>RUC:</strong> {company?.ruc || 'RUC no configurado'}</div><div><strong>Dir. Matriz:</strong> {company?.direccion_matriz || 'Direccion matriz no configurada'}</div><div><strong>Usuario operador:</strong> {purchase.username || 'S/D'}</div></div></div><div className="border rounded-1 p-2 small"><div className="fw-bold" style={{ fontSize: '1.05rem' }}>COMPROBANTE INTERNO DE COMPRA</div><div><strong>Factura proveedor:</strong> {purchase.numero_factura_compra}</div><div><strong>Fecha registro:</strong> {purchase.fecha_compra ? new Date(purchase.fecha_compra).toLocaleString() : 'N/D'}</div><div><strong>Estado:</strong> {purchase.estado || 'REGISTRADA'}</div><div className="alert alert-secondary py-1 px-2 mt-2 mb-0 small">Documento interno para respaldo de ingreso de inventario.</div></div></div>
+              <div className="border rounded-1 p-2 small mt-3"><div className="d-grid" style={{ gridTemplateColumns: '1.8fr 1fr 1fr', columnGap: '1rem' }}><div><strong>Proveedor:</strong> {purchase.proveedor_nombre}</div><div><strong>RUC/C.I.:</strong> {purchase.proveedor_identificacion}</div><div><strong>Email:</strong> {purchase.proveedor_email || 'S/D'}</div><div><strong>Direccion:</strong> {purchase.proveedor_direccion || 'S/D'}</div><div><strong>Telefono:</strong> {purchase.proveedor_telefono || 'S/D'}</div><div><strong>Moneda:</strong> USD</div></div></div>
+              <table className="table table-bordered table-sm small align-middle my-2" style={{ borderColor: '#4b5563' }}><thead><tr className="text-center"><th style={{ width: '75px' }}>Codigo</th><th>Detalle del producto</th><th className="text-end">Cantidad</th><th className="text-end">Costo Unit.</th><th className="text-end">IVA</th><th className="text-end">Total</th></tr></thead><tbody>{details.map((d) => <tr key={d.id_detalle}><td className="font-monospace">{d.producto_codigo}</td><td>{d.producto_nombre}</td><td className="text-end">{qty(d.cantidad)}</td><td className="text-end">{money(d.costo_unitario)}</td><td className="text-end">{money(d.valor_iva)}</td><td className="text-end">{money(parseFloat(d.precio_total || 0) + parseFloat(d.valor_iva || 0))}</td></tr>)}</tbody></table>
+              <div className="d-grid gap-2" style={{ gridTemplateColumns: '1fr 1.15fr' }}><div className="border rounded-1 p-2 small"><div className="fw-bold mb-1">Info. Adicional</div><div><strong>Observacion:</strong> {purchase.observacion || ''}</div></div><div className="border rounded-1 p-2 small"><div className="d-flex justify-content-between"><span>Subtotal IVA 0%:</span><span>{money(purchase.subtotal_iva_cero)}</span></div><div className="d-flex justify-content-between"><span>Subtotal:</span><span>{money(purchase.subtotal_con_iva)}</span></div><div className="d-flex justify-content-between"><span>Subtotal sin impuesto:</span><span>{money(subtotalNoTax)}</span></div><div className="d-flex justify-content-between"><span>Descuento:</span><span>{money(purchase.descuento_total)}</span></div><div className="d-flex justify-content-between"><span>IVA:</span><span>{money(purchase.valor_iva)}</span></div><div className="d-flex justify-content-between fw-bold text-success border-top pt-1 mt-1"><span>TOTAL:</span><span>{money(purchase.total)}</span></div></div></div>
+              {purchase.estado === 'ANULADA' && <div className="alert alert-danger text-center fw-bold py-2 mt-3 mb-0">DOCUMENTO ANULADO</div>}
+              <div className="form-actions-buttons d-flex justify-content-end gap-2 mt-4 pt-3 border-top"><button type="button" className="btn btn-outline-primary" onClick={() => printDocument()}>Imprimir</button><button type="button" className="btn btn-secondary" onClick={() => setSelectedPurchaseDetail(null)}>Cerrar Detalle</button></div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 

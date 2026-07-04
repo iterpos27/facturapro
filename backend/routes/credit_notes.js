@@ -61,10 +61,12 @@ router.get('/:id', async (req, res) => {
       WHERE ncd.id_nota_credito = $1
       ORDER BY ncd.id_detalle ASC
     `, [req.params.id]);
+    const companyRes = await db.query('SELECT * FROM empresas LIMIT 1');
 
     res.json({
       creditNote: ncRes.rows[0],
       details: detallesRes.rows,
+      company: companyRes.rows[0] || null,
     });
   } catch (error) {
     console.error('Error al obtener detalle de nota de credito:', error);

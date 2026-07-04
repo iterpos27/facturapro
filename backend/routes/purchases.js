@@ -59,10 +59,12 @@ router.get('/:id', async (req, res) => {
       WHERE cd.id_compra = $1
       ORDER BY cd.id_detalle ASC
     `, [id]);
+    const companyRes = await db.query('SELECT * FROM empresas LIMIT 1');
 
     res.json({
       purchase: compraRes.rows[0],
       details: detallesRes.rows,
+      company: companyRes.rows[0] || null,
     });
   } catch (error) {
     console.error('Error al obtener detalle de compra:', error);

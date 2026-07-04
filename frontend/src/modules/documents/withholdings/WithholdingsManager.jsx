@@ -1,7 +1,15 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import Swal from 'sweetalert2';
-import { apiFetch } from '../../../lib/api';
+import { apiFetch, apiUrl } from '../../../lib/api';
 import { printDocument } from '../../../lib/printDocument';
+
+const money = (value) => (parseFloat(value || 0) || 0).toFixed(2);
+
+function resolveAssetUrl(value) {
+  const url = String(value || '').trim();
+  if (!url) return '';
+  return url.startsWith('/uploads/') ? apiUrl(url) : url;
+}
 
 export default function WithholdingsManager() {
   const [withholdings, setWithholdings] = useState([]);
@@ -576,95 +584,28 @@ export default function WithholdingsManager() {
         </>
       )}
 
-      {/* MODAL DETALLE RETENCIÓN */}
-      {selectedRetDetail && (
-        <div className="modal-overlay" onClick={() => setSelectedRetDetail(null)}>
-          <div
-            className="modal-container text-dark print-document"
-            style={{ maxWidth: '800px', width: '95%' }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <button
-              className="modal-close-btn"
-              onClick={() => setSelectedRetDetail(null)}
-              aria-label="Cerrar detalle"
-            >
-              X
-            </button>
-            <h2 className="fw-bold text-center mb-3">Detalle de Comprobante de Retención</h2>
-            <div style={{ borderTop: '2px dashed #ccc', margin: '0.75rem 0' }}></div>
+      {/* MODAL DETALLE RETENCION */}
+      {selectedRetDetail && (() => {
+        const { withholding, details, company } = selectedRetDetail;
+        const issuerName = company?.razon_social || company?.nombre_comercial || 'Empresa no configurada';
+        const tradeName = company?.nombre_comercial || issuerName;
+        const logoUrl = resolveAssetUrl(company?.logo_url);
+        const totalRetenido = details.reduce((sum, r) => sum + parseFloat(r.valor_retenido || 0), 0);
 
-            <div className="row small mb-3">
-              <div className="col-md-6">
-                <div><strong>SUJETO RETENIDO:</strong> {selectedRetDetail.withholding.proveedor_nombre}</div>
-                <div><strong>RUC/Cédula:</strong> {selectedRetDetail.withholding.proveedor_identificacion}</div>
-                <div><strong>Email:</strong> {selectedRetDetail.withholding.proveedor_email}</div>
-                <div><strong>Dirección:</strong> {selectedRetDetail.withholding.proveedor_direccion || 'S/D'}</div>
-              </div>
-              <div className="col-md-6">
-                <div><strong>Comprobante Retención:</strong> {selectedRetDetail.withholding.numero_retencion}</div>
-                <div><strong>Factura Compra Afectada:</strong> {selectedRetDetail.withholding.numero_factura_compra}</div>
-                <div><strong>Fecha Emisión:</strong> {new Date(selectedRetDetail.withholding.fecha_emision).toLocaleString()}</div>
-                <div><strong>Clave Acceso SRI:</strong> <br /> <span className="small text-muted">{selectedRetDetail.withholding.clave_acceso}</span></div>
-              </div>
-            </div>
-
-            <div style={{ borderTop: '1px solid #eee', margin: '0.75rem 0' }}></div>
-
-            <table className="table table-sm table-striped small">
-              <thead>
-                <tr>
-                  <th>Impuesto</th>
-                  <th>Código SRI</th>
-                  <th className="text-end">Porcentaje</th>
-                  <th className="text-end">Base Imponible</th>
-                  <th className="text-end">Valor Retenido</th>
-                </tr>
-              </thead>
-              <tbody>
-                {selectedRetDetail.details.map((d) => (
-                  <tr key={d.id_detalle}>
-                    <td>{d.impuesto}</td>
-                    <td>{d.codigo_sri}</td>
-                    <td className="text-end">{parseFloat(d.porcentaje).toFixed(2)}%</td>
-                    <td className="text-end">${parseFloat(d.base_imponible).toFixed(2)}</td>
-                    <td className="text-end fw-bold text-success">${parseFloat(d.valor_retenido).toFixed(2)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-
-            <div className="row justify-content-end mt-3">
-              <div className="col-md-5 small">
-                <div className="d-flex justify-content-between fw-bold text-success border-top pt-1 mt-1">
-                  <span>Total Retenido:</span>
-                  <span>
-                    $
-                    {selectedRetDetail.details.reduce((sum, r) => sum + parseFloat(r.valor_retenido), 0).toFixed(2)}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            <div className="d-flex justify-content-end gap-2 mt-4 pt-3 border-top">
-              <button
-                type="button"
-                className="btn btn-outline-primary"
-                onClick={() => printDocument()}
-              >
-                Imprimir
-              </button>
-              <button
-                type="button"
-                className="btn btn-secondary"
-                onClick={() => setSelectedRetDetail(null)}
-              >
-                Cerrar Detalle
-              </button>
+        return (
+          <div className="modal-overlay" onClick={() => setSelectedRetDetail(null)}>
+            <div className="modal-container text-dark print-document" style={{ maxWidth: '820px', width: '96%', fontFamily: 'Arial, Helvetica, sans-serif', padding: '1.4rem', borderRadius: '6px', backgroundColor: '#ffffff', boxShadow: '0 20px 40px rgba(0,0,0,0.18)' }} onClick={(e) => e.stopPropagation()}>
+              <button className="modal-close-btn form-actions-buttons" onClick={() => setSelectedRetDetail(null)} aria-label="Cerrar detalle" style={{ top: '10px', right: '10px' }}>X</button>
+              <div className="d-grid gap-2" style={{ gridTemplateColumns: '1fr 1.35fr' }}><div><div className="border d-flex align-items-center justify-content-center bg-white mb-2" style={{ width: '150px', height: '74px', padding: '6px' }}>{logoUrl ? <img src={logoUrl} alt={tradeName} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} /> : <div className="fw-bold text-center text-primary" style={{ fontSize: '0.95rem', lineHeight: 1.05 }}>{tradeName}</div>}</div><div className="border rounded-1 p-2 small" style={{ minHeight: '116px' }}><div className="fw-bold">{issuerName}</div><div><strong>Dir. Matriz:</strong> {company?.direccion_matriz || 'Direccion matriz no configurada'}</div><div><strong>Obligado a llevar contabilidad:</strong> {company?.obligado_contabilidad ? 'SI' : 'NO'}</div>{company?.contribuyente_especial && <div><strong>Agente/Contribuyente especial:</strong> {company.contribuyente_especial}</div>}{company?.regimen && <div><strong>Regimen:</strong> {company.regimen}</div>}</div></div><div className="border rounded-1 p-2 small"><div><strong>RUC:</strong> {company?.ruc || 'RUC no configurado'}</div><div className="fw-bold" style={{ fontSize: '1.05rem' }}>COMPROBANTE DE RETENCION No. {withholding.numero_retencion}</div><div><strong>Factura compra:</strong> {withholding.numero_factura_compra}</div><div><strong>Fecha emision:</strong> {withholding.fecha_emision ? new Date(withholding.fecha_emision).toLocaleString() : 'N/D'}</div><div><strong>Estado:</strong> {withholding.estado || 'EMITIDA'}</div><div className="fw-bold mt-1">CLAVE DE ACCESO:</div><div className="text-center border-top pt-1 mt-1"><div className="font-monospace" style={{ letterSpacing: '2px', fontSize: '0.7rem' }}>||||| || ||||| ||| |||| |||||| |||</div><div className="font-monospace text-break" style={{ fontSize: '0.66rem' }}>{withholding.clave_acceso || 'PENDIENTE'}</div></div></div></div>
+              <div className="border rounded-1 p-2 small mt-3"><div className="d-grid" style={{ gridTemplateColumns: '1.8fr 1fr 1fr', columnGap: '1rem' }}><div><strong>Sujeto retenido:</strong> {withholding.proveedor_nombre}</div><div><strong>RUC/C.I.:</strong> {withholding.proveedor_identificacion}</div><div><strong>Email:</strong> {withholding.proveedor_email || 'S/D'}</div><div><strong>Direccion:</strong> {withholding.proveedor_direccion || 'S/D'}</div><div><strong>Telefono:</strong> {withholding.proveedor_telefono || 'S/D'}</div><div><strong>Usuario:</strong> {withholding.username || 'S/D'}</div></div></div>
+              <table className="table table-bordered table-sm small align-middle my-2" style={{ borderColor: '#4b5563' }}><thead><tr className="text-center"><th>Impuesto</th><th>Codigo SRI</th><th className="text-end">Porcentaje</th><th className="text-end">Base Imponible</th><th className="text-end">Valor Retenido</th></tr></thead><tbody>{details.map((d) => <tr key={d.id_detalle}><td>{d.impuesto}</td><td className="font-monospace">{d.codigo_sri}</td><td className="text-end">{money(d.porcentaje)}%</td><td className="text-end">{money(d.base_imponible)}</td><td className="text-end fw-bold text-success">{money(d.valor_retenido)}</td></tr>)}</tbody></table>
+              <div className="d-grid gap-2" style={{ gridTemplateColumns: '1fr 1.15fr' }}><div className="border rounded-1 p-2 small"><div className="fw-bold mb-1">Info. Adicional</div><div><strong>Factura compra afectada:</strong> {withholding.numero_factura_compra}</div><div><strong>Fecha compra:</strong> {withholding.fecha_compra ? new Date(withholding.fecha_compra).toLocaleDateString() : 'N/D'}</div></div><div className="border rounded-1 p-2 small"><div className="d-flex justify-content-between fw-bold text-success border-top pt-1 mt-1"><span>TOTAL RETENIDO:</span><span>{money(totalRetenido)}</span></div></div></div>
+              {withholding.estado === 'ANULADA' && <div className="alert alert-danger text-center fw-bold py-2 mt-3 mb-0">DOCUMENTO ANULADO</div>}
+              <div className="form-actions-buttons d-flex justify-content-end gap-2 mt-4 pt-3 border-top"><button type="button" className="btn btn-outline-primary" onClick={() => printDocument()}>Imprimir</button><button type="button" className="btn btn-secondary" onClick={() => setSelectedRetDetail(null)}>Cerrar Detalle</button></div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 }

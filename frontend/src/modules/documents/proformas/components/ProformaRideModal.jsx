@@ -1,205 +1,161 @@
 import React from 'react';
+import { apiUrl } from '../../../../lib/api';
 import { printDocument } from '../../../../lib/printDocument';
+
+const money = (value) => (parseFloat(value || 0) || 0).toFixed(2);
+const qty = (value) => (parseFloat(value || 0) || 0).toFixed(2);
+
+function resolveAssetUrl(value) {
+  const url = String(value || '').trim();
+  if (!url) return '';
+  return url.startsWith('/uploads/') ? apiUrl(url) : url;
+}
 
 export default function ProformaRideModal({ viewProforma, onClose }) {
   if (!viewProforma) return null;
 
   const company = viewProforma.company || {};
   const issuerName = company.razon_social || company.nombre_comercial || 'Empresa no configurada';
+  const tradeName = company.nombre_comercial || issuerName;
   const companyRuc = company.ruc || 'RUC no configurado';
   const matrixAddress = company.direccion_matriz || 'Direccion matriz no configurada';
   const accountingRequired = company.obligado_contabilidad ? 'SI' : 'NO';
+  const logoUrl = resolveAssetUrl(company.logo_url);
+  const subtotalNoTax = parseFloat(viewProforma.subtotal || 0) || 0;
+  const discount = parseFloat(viewProforma.discount || 0) || 0;
 
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div
         className="modal-container text-dark print-document"
         style={{
-          maxWidth: '800px',
-          width: '95%',
-          fontFamily: 'Courier New, Courier, monospace',
+          maxWidth: '820px',
+          width: '96%',
+          fontFamily: 'Arial, Helvetica, sans-serif',
+          padding: '1.4rem',
+          borderRadius: '6px',
+          backgroundColor: '#ffffff',
+          boxShadow: '0 20px 40px rgba(0,0,0,0.18)',
         }}
         onClick={(e) => e.stopPropagation()}
       >
         <button
-          className="modal-close-btn"
+          className="modal-close-btn form-actions-buttons"
           onClick={onClose}
           aria-label="Cerrar proforma"
+          style={{ top: '10px', right: '10px' }}
         >
-          ✕
+          X
         </button>
 
-        {/* Cabecera Cotización */}
-        <div className="text-center mb-4">
-          <h3 className="fw-bold m-0">COTIZACIÓN COMERCIAL</h3>
-          <h5 className="m-0">DOCUMENTO PROFORMA</h5>
-          <div style={{ borderTop: '2px dashed #000', margin: '0.75rem 0' }}></div>
-        </div>
+        <div className="d-grid gap-2" style={{ gridTemplateColumns: '1fr 1.35fr' }}>
+          <div>
+            <div className="border d-flex align-items-center justify-content-center bg-white mb-2" style={{ width: '150px', height: '74px', padding: '6px' }}>
+              {logoUrl ? (
+                <img src={logoUrl} alt={tradeName} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
+              ) : (
+                <div className="fw-bold text-center text-primary" style={{ fontSize: '0.95rem', lineHeight: 1.05 }}>{tradeName}</div>
+              )}
+            </div>
 
-        <div className="row small mb-3">
-          <div className="col-md-6 mb-2">
-            <div>
-              <strong>EMISOR:</strong>
+            <div className="border rounded-1 p-2 small" style={{ minHeight: '116px' }}>
+              <div className="fw-bold">{issuerName}</div>
+              <div><strong>Dir. Matriz:</strong> {matrixAddress}</div>
+              <div><strong>Establecimiento:</strong> MATRIZ (001-001)</div>
+              <div><strong>Obligado a llevar contabilidad:</strong> {accountingRequired}</div>
+              {company.contribuyente_especial && <div><strong>Agente/Contribuyente especial:</strong> {company.contribuyente_especial}</div>}
+              {company.regimen && <div><strong>Regimen:</strong> {company.regimen}</div>}
             </div>
-            <div>{issuerName}</div>
-            <div>RUC: {companyRuc}</div>
-            <div>Matriz: {matrixAddress}</div>
-            <div>Establecimiento: MATRIZ (001-001)</div>
-            <div>Obligado a llevar contabilidad: {accountingRequired}</div>
-            {company.contribuyente_especial && (
-              <div>Contribuyente Especial No: {company.contribuyente_especial}</div>
-            )}
-            {company.regimen && <div>{company.regimen}</div>}
           </div>
-          <div className="col-md-6 mb-2">
-            <div>
-              <strong>No. PROFORMA:</strong>
+
+          <div className="border rounded-1 p-2 small">
+            <div><strong>RUC:</strong> {companyRuc}</div>
+            <div className="fw-bold" style={{ fontSize: '1.08rem' }}>PROFORMA No. {viewProforma.number}</div>
+            <div className="mt-1"><strong>No. Transaccion:</strong> {viewProforma.transactionNumber || 'N/D'}</div>
+            <div><strong>Fecha Emision:</strong> {viewProforma.createdAt ? new Date(viewProforma.createdAt).toLocaleString() : 'N/D'}</div>
+            <div><strong>Vence:</strong> {viewProforma.validUntil || 'N/D'}</div>
+            <div><strong>Estado:</strong> {viewProforma.status || 'BORRADOR'}</div>
+            <div className="alert alert-warning py-1 px-2 mt-2 mb-0 small">
+              Documento sin validez tributaria. Sirve como cotizacion previa a factura.
             </div>
-            <div className="fw-bold" style={{ fontSize: '1.05rem' }}>
-              {viewProforma.number}
-            </div>
-            <div>
-              Fecha de Emisión:{' '}
-              {new Date(viewProforma.createdAt).toLocaleString()}
-            </div>
-            <div>Vence: {viewProforma.validUntil || '-'}</div>
-            <div>
-              Estado:{' '}
-              <span className="badge bg-secondary">{viewProforma.status}</span>
-            </div>
-            <div>No. Transacción: {viewProforma.transactionNumber}</div>
           </div>
         </div>
 
-        <div style={{ borderTop: '1px dashed #000', margin: '0.5rem 0' }}></div>
-
-        {/* Datos Cliente */}
-        <div className="small mb-3">
-          <div>
-            <strong>RAZÓN SOCIAL CLIENTE:</strong> {viewProforma.clientName}
-          </div>
-          <div>
-            <strong>RUC/CÉDULA:</strong> {viewProforma.clientIdentification}
-          </div>
-          <div>
-            <strong>DIRECCIÓN:</strong> {viewProforma.clientAddress || 'S/D'}
-          </div>
-          <div>
-            <strong>TELÉFONO:</strong> {viewProforma.clientPhone || 'S/D'}
-          </div>
-          <div>
-            <strong>EMAIL:</strong> {viewProforma.clientEmail || 'S/D'}
+        <div className="border rounded-1 p-2 small mt-3">
+          <div className="d-grid" style={{ gridTemplateColumns: '1.8fr 1fr 1fr', columnGap: '1rem' }}>
+            <div><strong>Cliente:</strong> {viewProforma.clientName}</div>
+            <div><strong>RUC/C.I.:</strong> {viewProforma.clientIdentification}</div>
+            <div><strong>Telefono:</strong> {viewProforma.clientPhone || 'S/D'}</div>
+            <div><strong>Direccion:</strong> {viewProforma.clientAddress || 'S/D'}</div>
+            <div><strong>Email:</strong> {viewProforma.clientEmail || 'S/D'}</div>
+            <div><strong>Moneda:</strong> USD</div>
           </div>
         </div>
 
-        <div style={{ borderTop: '1px dashed #000', margin: '0.5rem 0' }}></div>
-
-        {/* Tabla Renglones */}
-        <table
-          className="table table-sm table-borderless small mb-3"
-          style={{ fontSize: '0.85rem' }}
-        >
+        <table className="table table-bordered table-sm small align-middle my-2" style={{ borderColor: '#4b5563' }}>
           <thead>
-            <tr style={{ borderBottom: '1px dashed #000' }}>
-              <th>Cod.</th>
-              <th>Cant.</th>
-              <th>Descripción</th>
-              <th className="text-end">P. Unit</th>
-              <th className="text-end">Desc. $</th>
-              <th className="text-end">Desc. %</th>
-              <th className="text-end">Total</th>
+            <tr className="text-center">
+              <th style={{ width: '75px' }}>Codigo</th>
+              <th>Detalle del producto</th>
+              <th style={{ width: '62px' }}>Cant.</th>
+              <th style={{ width: '78px' }}>PVP</th>
+              <th style={{ width: '78px' }}>Desc</th>
+              <th style={{ width: '78px' }}>Desc %</th>
+              <th style={{ width: '82px' }}>Total</th>
             </tr>
           </thead>
           <tbody>
-            {viewProforma.items.map((d, index) => (
-              <tr key={d.id || index}>
-                <td>{d.code}</td>
-                <td>{parseFloat(d.quantity).toFixed(2)}</td>
-                <td>{d.name}</td>
-                <td className="text-end">
-                  ${parseFloat(d.price).toFixed(2)}
-                </td>
-                <td className="text-end">
-                  $
-                  {parseFloat(d.discountAmount ?? d.discount ?? 0).toFixed(2)}
-                </td>
-                <td className="text-end">
-                  {parseFloat(d.discountPercent ?? 0).toFixed(2)}%
-                </td>
-                <td className="text-end">
-                  ${parseFloat(d.total ?? d.subtotal).toFixed(2)}
-                </td>
-              </tr>
-            ))}
+            {viewProforma.items.map((d, index) => {
+              const lineDiscount = parseFloat(d.discountAmount ?? d.discount ?? 0) || 0;
+              return (
+                <tr key={d.id || index}>
+                  <td className="font-monospace">{d.code}</td>
+                  <td>{d.name}</td>
+                  <td className="text-center">{qty(d.quantity)}</td>
+                  <td className="text-end">{money(d.price)}</td>
+                  <td className="text-end">{money(lineDiscount)}</td>
+                  <td className="text-end">{money(d.discountPercent)}%</td>
+                  <td className="text-end">{money(d.total ?? d.subtotal)}</td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
 
-        <div style={{ borderTop: '1px dashed #000', margin: '0.5rem 0' }}></div>
+        <div className="d-grid gap-2" style={{ gridTemplateColumns: '1fr 1.15fr' }}>
+          <div className="border rounded-1 p-2 small">
+            <div className="fw-bold mb-1">Info. Adicional</div>
+            <div><strong>Observacion:</strong> {viewProforma.notes || ''}</div>
+            <div><strong>Uso:</strong> Cotizacion comercial</div>
+          </div>
 
-        {/* Resumen de totales */}
-        <div className="row small">
-          <div className="col-7">
-            {viewProforma.notes && (
-              <div>
-                <div>
-                  <strong>OBSERVACIONES:</strong>
-                </div>
-                <div style={{ whiteSpace: 'pre-wrap' }}>
-                  {viewProforma.notes}
-                </div>
+          <div className="border rounded-1 p-2 small">
+            {[
+              ['Subtotal', subtotalNoTax],
+              ['Descuento', discount],
+              ['Subtotal neto', Math.max(subtotalNoTax - discount, 0)],
+              ['IVA', viewProforma.iva],
+              ['TOTAL COTIZADO', viewProforma.total],
+            ].map(([label, value]) => (
+              <div key={label} className={`d-flex justify-content-between ${label === 'TOTAL COTIZADO' ? 'fw-bold border-top mt-1 pt-1' : ''}`}>
+                <span>{label}</span>
+                <span>{money(value)}</span>
               </div>
-            )}
-          </div>
-          <div className="col-5">
-            <div className="d-flex justify-content-between">
-              <span>Subtotal:</span>
-              <span>${parseFloat(viewProforma.subtotal).toFixed(2)}</span>
-            </div>
-            <div className="d-flex justify-content-between">
-              <span>Descuento:</span>
-              <span>${parseFloat(viewProforma.discount || 0).toFixed(2)}</span>
-            </div>
-            <div className="d-flex justify-content-between">
-              <span>IVA:</span>
-              <span>${parseFloat(viewProforma.iva).toFixed(2)}</span>
-            </div>
-            <div
-              className="d-flex justify-content-between fw-bold"
-              style={{
-                fontSize: '1rem',
-                borderTop: '1px double #000',
-                paddingTop: '2px',
-              }}
-            >
-              <span>TOTAL COTIZADO:</span>
-              <span>${parseFloat(viewProforma.total).toFixed(2)}</span>
-            </div>
+            ))}
           </div>
         </div>
 
-        <div
-          style={{ borderTop: '2px dashed #000', margin: '1rem 0 0.5rem' }}
-        ></div>
-        <div className="text-center small text-secondary">
-          ¡Gracias por preferirnos! Esta proforma no representa una factura ni un
-          comprobante fiscal.
+        <div className="text-center mt-4 small">
+          <div style={{ width: '170px', borderTop: '1px solid #777', margin: '0 auto 2px' }}></div>
+          Cliente
         </div>
 
-        <div className="form-actions-buttons border-top pt-3 mt-3">
-          <button
-            type="button"
-            className="btn btn-secondary"
-            onClick={() => printDocument()}
-          >
-            🖨️ Imprimir Cotización
+        <div className="form-actions-buttons border-top pt-3 mt-3 d-flex justify-content-end gap-2">
+          <button type="button" className="btn btn-secondary" onClick={() => printDocument()}>
+            Imprimir Proforma
           </button>
-          <button
-            type="button"
-            className="btn btn-danger"
-            style={{ backgroundColor: '#f43f5e', color: '#ffffff' }}
-            onClick={onClose}
-          >
-            Cerrar Vista
+          <button type="button" className="btn btn-danger" style={{ backgroundColor: '#f43f5e', color: '#ffffff' }} onClick={onClose}>
+            Cerrar RIDE
           </button>
         </div>
       </div>

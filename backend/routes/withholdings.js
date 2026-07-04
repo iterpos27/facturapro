@@ -62,10 +62,12 @@ router.get('/:id', async (req, res) => {
       WHERE rd.id_retencion = $1
       ORDER BY rd.id_detalle ASC
     `, [id]);
+    const companyRes = await db.query('SELECT * FROM empresas LIMIT 1');
 
     res.json({
       withholding: retRes.rows[0],
       details: detallesRes.rows,
+      company: companyRes.rows[0] || null,
     });
   } catch (error) {
     console.error('Error al obtener detalle de retención:', error);
