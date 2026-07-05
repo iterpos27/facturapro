@@ -57,6 +57,80 @@ router.get('/status', async (req, res) => {
   }
 });
 
+router.get('/sessions', async (req, res) => {
+  const params = [];
+  const where = [];
+
+  if (req.query.date_from) {
+    params.push(req.query.date_from);
+    where.push(`sc.fecha_apertura >= $${params.length}`);
+  }
+  if (req.query.date_to) {
+    params.push(req.query.date_to);
+    where.push(`sc.fecha_apertura < ($${params.length}::date + INTERVAL '1 day')`);
+  }
+  if (req.query.id_usuario) {
+    params.push(Number(req.query.id_usuario));
+    where.push(`sc.id_usuario = $${params.length}`);
+  }
+  if (req.query.id_caja) {
+    params.push(Number(req.query.id_caja));
+    where.push(`sc.id_caja = $${params.length}`);
+  }
+
+  const limit = Math.min(Math.max(Number(req.query.limit || 25), 1), 100);
+  params.push(limit);
+
+  try {
+    const result = await db.query(`
+      SELECT sc.*, c.nombre AS caja_nombre, s.nombre AS sucursal_nombre, u.username
+      FROM sesiones_caja sc
+      JOIN cajas c ON sc.id_caja = c.id_caja
+      JOIN sucursales s ON c.id_sucursal = s.id_sucursal
+      LEFT JOIN usuarios u ON sc.id_usuario = u.id_usuario
+      ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
+      ORDER BY sc.fecha_apertura DESC
+      LIMIT $${params.length}
+    `, params);
+
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error al consultar sesiones de caja:', error);
+    res.status(500).json({ error: 'Error al consultar sesiones de caja.' });
+  }
+});
+
+router.get('/sessions/:id', async (req, res) => {
+  try {
+    const sessionRes = await db.query(`
+      SELECT sc.*, c.nombre AS caja_nombre, s.nombre AS sucursal_nombre, u.username
+      FROM sesiones_caja sc
+      JOIN cajas c ON sc.id_caja = c.id_caja
+      JOIN sucursales s ON c.id_sucursal = s.id_sucursal
+      LEFT JOIN usuarios u ON sc.id_usuario = u.id_usuario
+      WHERE sc.id_sesion = $1
+    `, [req.params.id]);
+
+    if (sessionRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Sesion de caja no encontrada.' });
+    }
+
+    const session = sessionRes.rows[0];
+    const summary = await getCashSessionSummary(
+      session.id_sesion,
+      session.id_usuario,
+      session.fecha_apertura,
+      db,
+      session.fecha_cierre
+    );
+
+    res.json({ ...session, summary });
+  } catch (error) {
+    console.error('Error al consultar detalle de caja:', error);
+    res.status(500).json({ error: 'Error al consultar detalle de caja.' });
+  }
+});
+
 router.post('/open', async (req, res) => {
   const { id_caja, monto_apertura, apertura_billetes, apertura_monedas } = req.body;
   const id_usuario = req.user.id_usuario;
@@ -186,8 +260,21 @@ router.post('/close', async (req, res) => {
       },
     });
 
+    const sessionMetaRes = await client.query(`
+      SELECT c.nombre AS caja_nombre, s.nombre AS sucursal_nombre, u.username
+      FROM sesiones_caja sc
+      JOIN cajas c ON sc.id_caja = c.id_caja
+      JOIN sucursales s ON c.id_sucursal = s.id_sucursal
+      LEFT JOIN usuarios u ON sc.id_usuario = u.id_usuario
+      WHERE sc.id_sesion = $1
+    `, [session.id_sesion]);
+
     await client.query('COMMIT');
-    res.json({ ...result.rows[0], summary: { ...summary, efectivo_esperado: efectivoEsperado, total_operativo: totalOperativo, diferencia_cierre: diferencia } });
+    res.json({
+      ...result.rows[0],
+      ...(sessionMetaRes.rows[0] || {}),
+      summary: { ...summary, efectivo_esperado: efectivoEsperado, total_operativo: totalOperativo, diferencia_cierre: diferencia },
+    });
   } catch (error) {
     await client.query('ROLLBACK');
     console.error('Error al cerrar caja:', error);
@@ -207,7 +294,7 @@ router.get('/payment-methods', async (req, res) => {
   }
 });
 
-async function getCashSessionSummary(idSesion, idUsuario, fechaApertura, client = db) {
+async function getCashSessionSummary(idSesion, idUsuario, fechaApertura, client = db, fechaCierre = null) {
   const invoiceRes = await client.query(`
     SELECT COUNT(*)::int AS facturas,
            COALESCE(SUM(total), 0) AS total_facturado,
@@ -230,11 +317,18 @@ async function getCashSessionSummary(idSesion, idUsuario, fechaApertura, client 
     throw error;
   });
 
+  const receivableParams = [idUsuario, fechaApertura];
+  let receivableDateFilter = 'fc.fecha_cobro >= $2';
+  if (fechaCierre) {
+    receivableParams.push(fechaCierre);
+    receivableDateFilter += ' AND fc.fecha_cobro <= $3';
+  }
+
   const receivablePayments = await client.query(`
     SELECT COALESCE(SUM(fc.monto), 0) AS total
     FROM factura_cobros fc
-    WHERE fc.id_usuario = $1 AND fc.fecha_cobro >= $2
-  `, [idUsuario, fechaApertura]).catch((error) => {
+    WHERE fc.id_usuario = $1 AND ${receivableDateFilter}
+  `, receivableParams).catch((error) => {
     if (error.code === '42P01') return { rows: [{ total: 0 }] };
     throw error;
   });

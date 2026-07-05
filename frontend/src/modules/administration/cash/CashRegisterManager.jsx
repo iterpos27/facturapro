@@ -17,6 +17,8 @@ export default function CashRegisterManager() {
   const [cierreMonedas, setCierreMonedas] = useState('');
   const [currentUser, setCurrentUser] = useState(null);
   const [lastClosedSession, setLastClosedSession] = useState(null);
+  const [cashSessions, setCashSessions] = useState([]);
+  const [receiptSession, setReceiptSession] = useState(null);
 
   useEffect(() => {
     const userStr = localStorage.getItem('user');
@@ -27,6 +29,7 @@ export default function CashRegisterManager() {
     }
     fetchBoxes();
     fetchPaymentMethods();
+    fetchCashSessions();
   }, []);
 
   const checkSessionStatus = async (userId) => {
@@ -65,6 +68,28 @@ export default function CashRegisterManager() {
       }
     } catch (error) {
       console.error(error);
+    }
+  };
+
+  const fetchCashSessions = async () => {
+    try {
+      const response = await apiFetch('/api/cash-registers/sessions?limit=15');
+      if (response.ok) {
+        setCashSessions(await response.json());
+      }
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  const handleViewReceipt = async (idSesion) => {
+    try {
+      const response = await apiFetch(`/api/cash-registers/sessions/${idSesion}`);
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'No se pudo cargar el recibo de cierre.');
+      setReceiptSession(result);
+    } catch (error) {
+      showAlert(error.message, 'error');
     }
   };
 
@@ -121,6 +146,7 @@ export default function CashRegisterManager() {
 
       showAlert('Sesion de caja abierta correctamente.', 'success');
       checkSessionStatus(currentUser.id_usuario);
+      fetchCashSessions();
     } catch (err) {
       showAlert(err.message, 'error');
     }
@@ -159,6 +185,8 @@ export default function CashRegisterManager() {
       setCierreBilletes('');
       setCierreMonedas('');
       checkSessionStatus(currentUser.id_usuario);
+      fetchCashSessions();
+      setReceiptSession(result);
     } catch (err) {
       showAlert(err.message, 'error');
     }
@@ -284,29 +312,8 @@ export default function CashRegisterManager() {
         </div>
 
         <div className="col-lg-5 mb-4">
-          {lastClosedSession && (
-            <div className="card shadow-sm border mb-3 print-document">
-              <div className="card-header bg-white py-3 d-flex justify-content-between align-items-center">
-                <h5 className="mb-0 text-dark fw-bold">Recibo de cierre</h5>
-                <button type="button" className="btn btn-secondary btn-sm" onClick={() => printDocument()}>Imprimir</button>
-              </div>
-              <div className="card-body p-3 small">
-                <div className="text-center mb-2">
-                  <strong>CIERRE DE CAJA</strong>
-                  <div>{lastClosedSession.caja_nombre || activeSession?.caja_nombre || 'Caja'}</div>
-                </div>
-                <div className="d-flex justify-content-between"><span>Apertura</span><strong>{money(lastClosedSession.monto_apertura)}</strong></div>
-                <div className="d-flex justify-content-between"><span>Ventas contado</span><strong>{money(lastClosedSession.summary?.ventas_contado)}</strong></div>
-                <div className="d-flex justify-content-between"><span>Ventas credito</span><strong>{money(lastClosedSession.summary?.ventas_credito)}</strong></div>
-                <div className="d-flex justify-content-between"><span>Cobros CxC</span><strong>{money(lastClosedSession.summary?.cobros_cxc)}</strong></div>
-                <div className="d-flex justify-content-between"><span>Notas credito</span><strong>-{money(lastClosedSession.summary?.notas_credito_total)}</strong></div>
-                <hr />
-                <div className="d-flex justify-content-between"><span>Efectivo esperado</span><strong>{money(lastClosedSession.efectivo_esperado)}</strong></div>
-                <div className="d-flex justify-content-between"><span>Conteo fisico</span><strong>{money(lastClosedSession.monto_cierre)}</strong></div>
-                <div className="d-flex justify-content-between"><span>Diferencia</span><strong>{money(lastClosedSession.diferencia_cierre)}</strong></div>
-              </div>
-            </div>
-          )}
+          {receiptSession && <CashCloseReceipt session={receiptSession} onClose={() => setReceiptSession(null)} />}
+          {!receiptSession && lastClosedSession && <CashCloseReceipt session={lastClosedSession} compact />}
 
           <div className="card shadow-sm border">
             <div className="card-header bg-white py-3">
@@ -326,6 +333,96 @@ export default function CashRegisterManager() {
               </div>
             </div>
           </div>
+
+          <div className="card shadow-sm border mt-3">
+            <div className="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+              <h5 className="mb-0 text-dark fw-bold">Historial de cierres</h5>
+              <button type="button" className="btn btn-secondary btn-sm" onClick={fetchCashSessions}>Actualizar</button>
+            </div>
+            <div className="card-body p-0">
+              <table className="table table-sm align-middle mb-0">
+                <thead className="table-light">
+                  <tr>
+                    <th>Caja</th>
+                    <th>Estado</th>
+                    <th className="text-end">Diferencia</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {cashSessions.length === 0 ? (
+                    <tr><td colSpan="4" className="text-center text-muted py-3">Sin sesiones registradas</td></tr>
+                  ) : cashSessions.map((session) => (
+                    <tr key={session.id_sesion}>
+                      <td>
+                        <strong>{session.caja_nombre}</strong>
+                        <div className="text-muted small">{new Date(session.fecha_apertura).toLocaleString()}</div>
+                      </td>
+                      <td><span className={`badge ${session.estado === 'ABIERTA' ? 'bg-success' : 'bg-secondary'}`}>{session.estado}</span></td>
+                      <td className="text-end">{money(session.diferencia_cierre)}</td>
+                      <td className="text-end">
+                        <button type="button" className="btn btn-outline-primary btn-sm" onClick={() => handleViewReceipt(session.id_sesion)}>
+                          Recibo
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CashCloseReceipt({ session, onClose, compact = false }) {
+  const summary = session.summary || {};
+  const aperturaBilletes = Number(session.apertura_billetes ?? session.monto_apertura ?? 0);
+  const aperturaMonedas = Number(session.apertura_monedas || 0);
+  const cierreBilletes = Number(session.cierre_billetes ?? session.monto_cierre ?? 0);
+  const cierreMonedas = Number(session.cierre_monedas || 0);
+
+  return (
+    <div className="card shadow-sm border mb-3 print-document">
+      <div className="card-header bg-white py-3 d-flex justify-content-between align-items-center form-actions-buttons">
+        <h5 className="mb-0 text-dark fw-bold">Recibo de cierre</h5>
+        <div className="d-flex gap-2">
+          <button type="button" className="btn btn-secondary btn-sm" onClick={() => printDocument()}>Imprimir</button>
+          {onClose && <button type="button" className="btn btn-outline-secondary btn-sm" onClick={onClose}>Cerrar</button>}
+        </div>
+      </div>
+      <div className="card-body p-3 small">
+        <div className="text-center mb-3">
+          <strong style={{ fontSize: compact ? '1rem' : '1.15rem' }}>CIERRE DE CAJA</strong>
+          <div>{session.caja_nombre || 'Caja'}</div>
+          <div className="text-muted">{session.username || 'Usuario'} | {session.fecha_cierre ? new Date(session.fecha_cierre).toLocaleString() : 'Sin cierre'}</div>
+        </div>
+        <div className="border rounded p-2 mb-2">
+          <div className="d-flex justify-content-between"><span>Apertura billetes</span><strong>{money(aperturaBilletes)}</strong></div>
+          <div className="d-flex justify-content-between"><span>Apertura monedas</span><strong>{money(aperturaMonedas)}</strong></div>
+          <div className="d-flex justify-content-between"><span>Total apertura</span><strong>{money(session.monto_apertura)}</strong></div>
+        </div>
+        <div className="border rounded p-2 mb-2">
+          <div className="d-flex justify-content-between"><span>Ventas contado</span><strong>{money(summary.ventas_contado ?? session.ventas_contado)}</strong></div>
+          <div className="d-flex justify-content-between"><span>Cobros CxC</span><strong>{money(summary.cobros_cxc ?? session.cobros_cxc)}</strong></div>
+          <div className="d-flex justify-content-between"><span>Notas credito</span><strong>-{money(summary.notas_credito_total ?? session.notas_credito_total)}</strong></div>
+          <div className="d-flex justify-content-between"><span>Ventas credito</span><strong>{money(summary.ventas_credito ?? session.ventas_credito)}</strong></div>
+        </div>
+        <div className="border rounded p-2 mb-2">
+          <div className="d-flex justify-content-between"><span>Cierre billetes</span><strong>{money(cierreBilletes)}</strong></div>
+          <div className="d-flex justify-content-between"><span>Cierre monedas</span><strong>{money(cierreMonedas)}</strong></div>
+          <div className="d-flex justify-content-between"><span>Conteo fisico</span><strong>{money(session.monto_cierre)}</strong></div>
+        </div>
+        <div className="border rounded p-2">
+          <div className="d-flex justify-content-between"><span>Efectivo esperado</span><strong>{money(session.efectivo_esperado)}</strong></div>
+          <div className="d-flex justify-content-between"><span>Total operativo</span><strong>{money(session.total_operativo)}</strong></div>
+          <div className="d-flex justify-content-between fw-bold"><span>Diferencia</span><strong>{money(session.diferencia_cierre)}</strong></div>
+        </div>
+        <div className="text-center mt-4">
+          <div style={{ width: '170px', borderTop: '1px solid #777', margin: '0 auto 2px' }}></div>
+          Responsable
         </div>
       </div>
     </div>

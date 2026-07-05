@@ -58,6 +58,7 @@ router.get('/summary', async (req, res) => {
       creditNotes,
       withholdings,
       approximateProfit,
+      cashSessions,
     ] = await Promise.all([
       db.query(`
         SELECT
@@ -151,6 +152,33 @@ router.get('/summary', async (req, res) => {
         JOIN productos p ON fd.id_producto = p.id_producto
         ${invoiceFilter.clause ? `${invoiceFilter.clause} AND f.estado = 'EMITIDA'` : "WHERE f.estado = 'EMITIDA'"}
       `, invoiceFilter.params),
+      (() => {
+        const params = [];
+        const where = [];
+        if (req.query.date_from) where.push(`sc.fecha_apertura >= ${addParam(params, req.query.date_from)}`);
+        if (req.query.date_to) where.push(`sc.fecha_apertura < (${addParam(params, req.query.date_to)}::date + INTERVAL '1 day')`);
+        if (req.query.id_usuario) where.push(`sc.id_usuario = ${addParam(params, Number(req.query.id_usuario))}`);
+        if (req.query.id_caja) where.push(`sc.id_caja = ${addParam(params, Number(req.query.id_caja))}`);
+        const clause = where.length ? `WHERE ${where.join(' AND ')}` : '';
+
+        return db.query(`
+          SELECT
+            COUNT(*) AS sesiones,
+            COUNT(*) FILTER (WHERE sc.estado = 'ABIERTA') AS abiertas,
+            COUNT(*) FILTER (WHERE sc.estado = 'CERRADA') AS cerradas,
+            COALESCE(SUM(sc.monto_apertura), 0) AS total_apertura,
+            COALESCE(SUM(sc.monto_cierre) FILTER (WHERE sc.estado = 'CERRADA'), 0) AS total_cierre,
+            COALESCE(SUM(sc.ventas_contado), 0) AS ventas_contado,
+            COALESCE(SUM(sc.ventas_credito), 0) AS ventas_credito,
+            COALESCE(SUM(sc.cobros_cxc), 0) AS cobros_cxc,
+            COALESCE(SUM(sc.notas_credito_total), 0) AS notas_credito_total,
+            COALESCE(SUM(sc.efectivo_esperado), 0) AS efectivo_esperado,
+            COALESCE(SUM(sc.total_operativo), 0) AS total_operativo,
+            COALESCE(SUM(sc.diferencia_cierre), 0) AS diferencia_cierre
+          FROM sesiones_caja sc
+          ${clause}
+        `, params);
+      })(),
     ]);
 
     res.json({
@@ -166,6 +194,7 @@ router.get('/summary', async (req, res) => {
       creditNotes: creditNotes.rows[0],
       withholdings: withholdings.rows[0],
       approximateProfit: approximateProfit.rows[0],
+      cash: cashSessions.rows[0],
     });
   } catch (error) {
     console.error('Error al consultar reportes:', error);

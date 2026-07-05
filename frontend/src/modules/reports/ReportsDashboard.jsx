@@ -71,6 +71,7 @@ export default function ReportsDashboard() {
   const creditNotes = summary?.creditNotes || {};
   const withholdings = summary?.withholdings || {};
   const profit = summary?.approximateProfit || {};
+  const cash = summary?.cash || {};
 
   return (
     <div className="module-shell">
@@ -108,9 +109,24 @@ export default function ReportsDashboard() {
             <Metric title="Notas credito" value={money(creditNotes.total_notas_credito)} tone="warning" />
             <Metric title="Retenido" value={money(withholdings.total_retenido)} tone="primary" />
             <Metric title="Utilidad est." value={money(profit.utilidad_estimada)} tone="success" />
+            <Metric title="Cierres caja" value={cash.cerradas || 0} tone="info" />
+            <Metric title="Diferencia caja" value={money(cash.diferencia_cierre)} tone="warning" />
           </div>
 
           <div className="row g-3">
+            <ReportTable title="Resumen de caja" headers={['Concepto', 'Valor']} rows={[
+              ['Sesiones abiertas', cash.abiertas || 0],
+              ['Sesiones cerradas', cash.cerradas || 0],
+              ['Aperturas', money(cash.total_apertura)],
+              ['Conteo fisico cierre', money(cash.total_cierre)],
+              ['Ventas contado', money(cash.ventas_contado)],
+              ['Ventas credito', money(cash.ventas_credito)],
+              ['Cobros CxC', money(cash.cobros_cxc)],
+              ['Notas credito', money(cash.notas_credito_total)],
+              ['Efectivo esperado', money(cash.efectivo_esperado)],
+              ['Total operativo', money(cash.total_operativo)],
+              ['Diferencia cierre', money(cash.diferencia_cierre)],
+            ]} />
             <ReportTable title="Proformas por estado" headers={['Estado', 'Cantidad', 'Total']} rows={(summary.proformas || []).map((row) => [row.estado, row.cantidad, money(row.total)])} />
             <ReportTable title="Ventas por dia" headers={['Fecha', 'Facturas', 'Total']} rows={(summary.dailySales || []).map((row) => [String(row.fecha).slice(0, 10), row.facturas, money(row.total)])} />
             <ReportTable title="Productos mas vendidos" headers={['Codigo', 'Producto', 'Cantidad']} rows={(summary.topProducts || []).map((row) => [row.codigo, row.nombre, Number(row.cantidad || 0).toFixed(2)])} />
