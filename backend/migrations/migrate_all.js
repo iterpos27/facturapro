@@ -25,6 +25,7 @@ const phases = [
   { name: 'Phase 14 — Secuenciales y permisos', file: './migrate_phase14_sequentials_permissions' },
   { name: 'Phase 15 — SRI complementarios', file: './migrate_phase15_sri_complementary' },
   { name: 'Phase 16 — Gestiones de cobranza', file: './migrate_phase16_credit_collections' },
+  { name: 'Phase 17 - Historial de emails SRI', file: './migrate_phase17_email_history' },
 ];
 
 async function runAll() {

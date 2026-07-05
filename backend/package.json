@@ -25,6 +25,7 @@
     "db:migrate:sequentials-permissions": "node migrations/migrate_phase14_sequentials_permissions.js",
     "db:migrate:sri-complementary": "node migrations/migrate_phase15_sri_complementary.js",
     "db:migrate:credit-collections": "node migrations/migrate_phase16_credit_collections.js",
+    "db:migrate:email-history": "node migrations/migrate_phase17_email_history.js",
     "db:migrate:all": "node migrations/migrate_all.js",
     "db:drop": "node migrations/migrate_drop.js",
     "db:productos": "node migrations/create_productos_table.js"

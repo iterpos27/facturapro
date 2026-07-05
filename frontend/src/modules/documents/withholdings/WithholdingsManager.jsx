@@ -255,6 +255,42 @@ export default function WithholdingsManager() {
     }
   };
 
+  const handleEmailSri = async (withholding) => {
+    try {
+      const historyResponse = await apiFetch(`/api/sri/emails/withholding/${withholding.id_retencion}`);
+      const history = historyResponse.ok ? await historyResponse.json() : [];
+      const historyRows = history.length > 0
+        ? history.slice(0, 5).map((item) => `
+            <tr><td>${new Date(item.created_at).toLocaleString()}</td><td>${item.destinatario}</td><td>${item.estado}</td></tr>
+          `).join('')
+        : '<tr><td colspan="3">Sin envios previos.</td></tr>';
+      const confirm = await Swal.fire({
+        title: 'Enviar retencion por email',
+        html: `
+          <div class="text-start">
+            <p><strong>Retencion:</strong> ${withholding.numero_retencion}</p>
+            <p><strong>Estado SRI:</strong> ${withholding.sri_estado || 'PENDIENTE'}</p>
+            <table class="table table-sm">
+              <thead><tr><th>Fecha</th><th>Destino</th><th>Estado</th></tr></thead>
+              <tbody>${historyRows}</tbody>
+            </table>
+          </div>
+        `,
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: 'Enviar ahora',
+        cancelButtonText: 'Cerrar',
+      });
+      if (!confirm.isConfirmed) return;
+      const response = await apiFetch(`/api/sri/emails/withholding/${withholding.id_retencion}/send`, { method: 'POST' });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || data.history?.mensaje_error || 'No se pudo enviar el email.');
+      Swal.fire('Email enviado', `Comprobante enviado a ${data.history.destinatario}.`, 'success');
+    } catch (error) {
+      Swal.fire('Email SRI', error.message, 'error');
+    }
+  };
+
   const filteredWithholdings = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
     return withholdings.filter((w) => {
@@ -609,6 +645,13 @@ export default function WithholdingsManager() {
                               Procesar SRI
                             </button>
                           )}
+                          <button
+                            className="btn btn-secondary ms-1"
+                            style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}
+                            onClick={() => handleEmailSri(w)}
+                          >
+                            Email
+                          </button>
                           {w.estado !== 'ANULADA' && (
                             <button
                               className="btn btn-danger ms-1"
@@ -661,6 +704,9 @@ export default function WithholdingsManager() {
                           Procesar SRI
                         </button>
                       )}
+                      <button className="btn btn-secondary" onClick={() => handleEmailSri(w)}>
+                        Email
+                      </button>
                       {w.estado !== 'ANULADA' && (
                         <button className="btn btn-danger" onClick={() => handleCancelWithholding(w)}>
                           Anular

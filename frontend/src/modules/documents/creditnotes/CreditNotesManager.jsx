@@ -236,6 +236,42 @@ export default function CreditNotesManager() {
     }
   };
 
+  const handleEmailSri = async (nc) => {
+    try {
+      const historyResponse = await apiFetch(`/api/sri/emails/credit-note/${nc.id_nota_credito}`);
+      const history = historyResponse.ok ? await historyResponse.json() : [];
+      const historyRows = history.length > 0
+        ? history.slice(0, 5).map((item) => `
+            <tr><td>${new Date(item.created_at).toLocaleString()}</td><td>${item.destinatario}</td><td>${item.estado}</td></tr>
+          `).join('')
+        : '<tr><td colspan="3">Sin envios previos.</td></tr>';
+      const confirm = await Swal.fire({
+        title: 'Enviar nota de credito por email',
+        html: `
+          <div class="text-start">
+            <p><strong>Nota:</strong> ${nc.numero_nota_credito}</p>
+            <p><strong>Estado SRI:</strong> ${nc.sri_estado || 'PENDIENTE'}</p>
+            <table class="table table-sm">
+              <thead><tr><th>Fecha</th><th>Destino</th><th>Estado</th></tr></thead>
+              <tbody>${historyRows}</tbody>
+            </table>
+          </div>
+        `,
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: 'Enviar ahora',
+        cancelButtonText: 'Cerrar',
+      });
+      if (!confirm.isConfirmed) return;
+      const response = await apiFetch(`/api/sri/emails/credit-note/${nc.id_nota_credito}/send`, { method: 'POST' });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || data.history?.mensaje_error || 'No se pudo enviar el email.');
+      Swal.fire('Email enviado', `Comprobante enviado a ${data.history.destinatario}.`, 'success');
+    } catch (error) {
+      Swal.fire('Email SRI', error.message, 'error');
+    }
+  };
+
   // Totales de la Nota de Crédito en tiempo real
   const totals = useMemo(() => {
     let subtotalSinImpuestos = 0;
@@ -583,6 +619,13 @@ export default function CreditNotesManager() {
                               Procesar SRI
                             </button>
                           )}
+                          <button
+                            className="btn btn-secondary ms-1"
+                            style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}
+                            onClick={() => handleEmailSri(nc)}
+                          >
+                            Email
+                          </button>
                           {nc.estado !== 'ANULADA' && (
                             <button
                               className="btn btn-danger ms-1"
@@ -635,6 +678,9 @@ export default function CreditNotesManager() {
                           Procesar SRI
                         </button>
                       )}
+                      <button className="btn btn-secondary" onClick={() => handleEmailSri(nc)}>
+                        Email
+                      </button>
                       {nc.estado !== 'ANULADA' && (
                         <button className="btn btn-danger" onClick={() => handleCancelNc(nc)}>
                           Anular

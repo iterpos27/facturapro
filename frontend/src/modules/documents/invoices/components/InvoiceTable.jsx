@@ -29,6 +29,7 @@ export default function InvoiceTable({
   onCancel,
   onGenerateSriTestXml,
   onProcessSriTest,
+  onEmailSri,
 }) {
   if (invoices.length === 0) {
     return (
@@ -114,6 +115,13 @@ export default function InvoiceTable({
                           Procesar SRI
                         </button>
                         <button
+                          className="btn btn-secondary"
+                          style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}
+                          onClick={() => onEmailSri(invoice)}
+                        >
+                          Email
+                        </button>
+                        <button
                           className="btn btn-danger"
                           style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}
                           onClick={() => onCancel(invoice.id_factura, invoice.numero_factura)}
@@ -181,6 +189,9 @@ export default function InvoiceTable({
                   </button>
                   <button className="btn btn-success" onClick={() => onProcessSriTest(invoice.id_factura)}>
                     Procesar SRI
+                  </button>
+                  <button className="btn btn-secondary" onClick={() => onEmailSri(invoice)}>
+                    Email
                   </button>
                   <button
                     className="btn btn-danger"

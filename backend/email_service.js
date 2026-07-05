@@ -47,7 +47,7 @@ function createTransporter() {
  * @param {string} opts.companyName - Nombre de la empresa emisora
  * @returns {Promise<{sent: boolean, error?: string}>}
  */
-async function sendAuthorizedDocument({ to, clientName, docNumber, docType, authNumber, xml, companyName }) {
+async function sendAuthorizedDocument({ to, clientName, docNumber, docType, authNumber, xml, rideHtml, companyName }) {
   if (!to || !to.includes('@')) {
     logger.warn({ to }, 'Email de cliente no válido — no se enviará el comprobante.');
     return { sent: false, error: 'Email de cliente no válido.' };
@@ -94,6 +94,22 @@ async function sendAuthorizedDocument({ to, clientName, docNumber, docType, auth
 </html>`;
 
   const xmlFilename = `${docType.replace(/\s/g, '_')}_${docNumber.replace(/\//g, '-')}_${authNumber.slice(-8)}.xml`;
+  const rideFilename = `${docType.replace(/\s/g, '_')}_${docNumber.replace(/\//g, '-')}_RIDE.html`;
+  const attachments = [];
+  if (xml) {
+    attachments.push({
+      filename: xmlFilename,
+      content: xml,
+      contentType: 'text/xml',
+    });
+  }
+  if (rideHtml) {
+    attachments.push({
+      filename: rideFilename,
+      content: rideHtml,
+      contentType: 'text/html',
+    });
+  }
 
   try {
     const info = await transporter.sendMail({
@@ -101,16 +117,10 @@ async function sendAuthorizedDocument({ to, clientName, docNumber, docType, auth
       to,
       subject,
       html,
-      attachments: [
-        {
-          filename: xmlFilename,
-          content: xml,
-          contentType: 'text/xml',
-        },
-      ],
+      attachments,
     });
     logger.info({ messageId: info.messageId, to, docNumber }, 'Comprobante enviado por email.');
-    return { sent: true };
+    return { sent: true, messageId: info.messageId, subject };
   } catch (error) {
     logger.error({ error, to, docNumber }, 'Error al enviar comprobante por email.');
     return { sent: false, error: error.message };

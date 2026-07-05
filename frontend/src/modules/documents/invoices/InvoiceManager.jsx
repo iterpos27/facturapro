@@ -340,6 +340,48 @@ export default function InvoiceManager({ onRedirectToCash }) {
     }
   };
 
+  const handleEmailSri = async (invoice) => {
+    try {
+      const historyResponse = await apiFetch(`/api/sri/emails/invoice/${invoice.id_factura}`);
+      const history = historyResponse.ok ? await historyResponse.json() : [];
+      const historyRows = history.length > 0
+        ? history.slice(0, 5).map((item) => `
+            <tr>
+              <td>${new Date(item.created_at).toLocaleString()}</td>
+              <td>${item.destinatario}</td>
+              <td>${item.estado}</td>
+            </tr>
+          `).join('')
+        : '<tr><td colspan="3">Sin envios previos.</td></tr>';
+
+      const confirm = await Swal.fire({
+        title: 'Enviar comprobante por email',
+        html: `
+          <div class="text-start">
+            <p><strong>Factura:</strong> ${invoice.numero_factura}</p>
+            <p><strong>Estado SRI:</strong> ${invoice.sri_estado || 'PENDIENTE'}</p>
+            <table class="table table-sm">
+              <thead><tr><th>Fecha</th><th>Destino</th><th>Estado</th></tr></thead>
+              <tbody>${historyRows}</tbody>
+            </table>
+          </div>
+        `,
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: 'Enviar ahora',
+        cancelButtonText: 'Cerrar',
+      });
+      if (!confirm.isConfirmed) return;
+
+      const response = await apiFetch(`/api/sri/emails/invoice/${invoice.id_factura}/send`, { method: 'POST' });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || data.history?.mensaje_error || 'No se pudo enviar el email.');
+      Swal.fire('Email enviado', `Comprobante enviado a ${data.history.destinatario}.`, 'success');
+    } catch (error) {
+      Swal.fire('Email SRI', error.message, 'error');
+    }
+  };
+
   const handleClearFilters = () => {
     setListQuery('');
     setStatusFilter('ALL');
@@ -410,6 +452,7 @@ export default function InvoiceManager({ onRedirectToCash }) {
               onCancel={handleCancelInvoice}
               onGenerateSriTestXml={handleGenerateSriTestXml}
               onProcessSriTest={handleProcessSriTest}
+              onEmailSri={handleEmailSri}
             />
           )}
         </>

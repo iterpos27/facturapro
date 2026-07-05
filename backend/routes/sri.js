@@ -23,6 +23,7 @@ router.use(authenticateToken);
 
 const getCurrentUserId = (req) => req.user?.id_usuario || req.user?.id || null;
 const normalize = (value) => String(value || '').trim();
+const money = (value) => (Math.round((parseFloat(value) || 0) * 100) / 100).toFixed(2);
 
 function sriRecordMatchesCompany(sri, company) {
   const ruc = normalize(company.ruc);
@@ -30,6 +31,178 @@ function sriRecordMatchesCompany(sri, company) {
     return false;
   }
   return sri.xml_generado.includes(`<ruc>${ruc}</ruc>`) && sri.xml_generado.includes(sri.clave_acceso);
+}
+
+function sriEmailConfig(tipoComprobante) {
+  const configs = {
+    '01': {
+      label: 'Factura',
+      table: 'facturas',
+      pk: 'id_factura',
+      numberField: 'numero_factura',
+      totalField: 'total',
+      recipientName: 'cliente_nombre',
+      recipientEmail: 'cliente_email',
+      query: `
+        SELECT f.*, c.name AS cliente_nombre, c.email AS cliente_email,
+               c.identification_number AS cliente_identificacion
+        FROM facturas f
+        JOIN clients c ON f.id_cliente = c.id
+        WHERE f.id_factura = $1
+      `,
+    },
+    '04': {
+      label: 'Nota de Credito',
+      table: 'notas_credito',
+      pk: 'id_nota_credito',
+      numberField: 'numero_nota_credito',
+      totalField: 'total',
+      recipientName: 'cliente_nombre',
+      recipientEmail: 'cliente_email',
+      query: `
+        SELECT nc.*, f.numero_factura, c.name AS cliente_nombre, c.email AS cliente_email,
+               c.identification_number AS cliente_identificacion
+        FROM notas_credito nc
+        JOIN facturas f ON nc.id_factura = f.id_factura
+        JOIN clients c ON f.id_cliente = c.id
+        WHERE nc.id_nota_credito = $1
+      `,
+    },
+    '07': {
+      label: 'Comprobante de Retencion',
+      table: 'retenciones',
+      pk: 'id_retencion',
+      numberField: 'numero_retencion',
+      totalField: null,
+      recipientName: 'proveedor_nombre',
+      recipientEmail: 'proveedor_email',
+      query: `
+        SELECT r.*, c.numero_factura_compra, p.nombre AS proveedor_nombre, p.email AS proveedor_email,
+               p.identificacion AS proveedor_identificacion
+        FROM retenciones r
+        JOIN compras c ON r.id_compra = c.id_compra
+        JOIN proveedores p ON c.id_proveedor = p.id_proveedor
+        WHERE r.id_retencion = $1
+      `,
+    },
+  };
+  const config = configs[tipoComprobante];
+  if (!config) throw new Error('Tipo de comprobante no soportado para email.');
+  return config;
+}
+
+function normalizeEmailDocumentType(value) {
+  const type = String(value || '').toLowerCase();
+  if (['invoice', 'invoices', 'factura', 'facturas', '01'].includes(type)) return '01';
+  if (['credit-note', 'credit-notes', 'nota-credito', 'notas-credito', '04'].includes(type)) return '04';
+  if (['withholding', 'withholdings', 'retencion', 'retenciones', '07'].includes(type)) return '07';
+  throw new Error('Tipo de comprobante no soportado.');
+}
+
+function buildRideHtml({ company, document, config, sri, totalRetenido = 0 }) {
+  const docNumber = document[config.numberField];
+  const total = config.totalField ? document[config.totalField] : totalRetenido;
+  return `<!DOCTYPE html>
+<html lang="es">
+<head><meta charset="UTF-8"><title>${config.label} ${docNumber}</title></head>
+<body style="font-family:Arial,sans-serif;color:#111827;padding:24px;">
+  <div style="border:1px solid #d1d5db;border-radius:8px;padding:18px;max-width:760px;margin:auto;">
+    <h2 style="margin:0 0 8px;">${company.razon_social || company.nombre_comercial || 'Empresa'}</h2>
+    <p style="margin:0 0 14px;"><strong>RUC:</strong> ${company.ruc || ''}</p>
+    <h3 style="margin:0 0 12px;">${config.label} No. ${docNumber}</h3>
+    <p><strong>Cliente/Sujeto:</strong> ${document[config.recipientName] || ''}</p>
+    <p><strong>Identificacion:</strong> ${document.cliente_identificacion || document.proveedor_identificacion || ''}</p>
+    <p><strong>Fecha:</strong> ${new Date(document.fecha_emision || document.created_at || Date.now()).toLocaleString('es-EC')}</p>
+    <p><strong>Ambiente:</strong> ${sri.ambiente || document.sri_ambiente || 'PRUEBAS'}</p>
+    <p><strong>Autorizacion:</strong> ${sri.numero_autorizacion || document.sri_numero_autorizacion || sri.clave_acceso || document.clave_acceso || ''}</p>
+    <p style="word-break:break-all;"><strong>Clave de acceso:</strong><br>${sri.clave_acceso || document.clave_acceso || ''}</p>
+    <hr>
+    <p style="font-size:22px;font-weight:700;text-align:right;">TOTAL: $${money(total)}</p>
+  </div>
+</body>
+</html>`;
+}
+
+async function loadEmailDocument(tipoComprobante, idDocumento) {
+  const config = sriEmailConfig(tipoComprobante);
+  const [documentRes, sriRes, companyRes] = await Promise.all([
+    db.query(config.query, [idDocumento]),
+    db.query('SELECT * FROM sri_comprobantes WHERE tipo_comprobante = $1 AND id_documento = $2', [tipoComprobante, idDocumento]),
+    db.query('SELECT * FROM empresas LIMIT 1'),
+  ]);
+  if (documentRes.rows.length === 0) throw new Error('Documento no encontrado.');
+  const sri = sriRes.rows[0];
+  if (!sri || sri.estado !== 'AUTORIZADO') {
+    throw new Error('El comprobante debe estar AUTORIZADO por SRI antes de enviarlo por email.');
+  }
+  const document = documentRes.rows[0];
+  let totalRetenido = 0;
+  if (tipoComprobante === '07') {
+    const retRes = await db.query('SELECT COALESCE(SUM(valor_retenido), 0) AS total FROM retencion_detalles WHERE id_retencion = $1', [idDocumento]);
+    totalRetenido = retRes.rows[0]?.total || 0;
+  }
+  return {
+    config,
+    document,
+    sri,
+    company: companyRes.rows[0] || {},
+    totalRetenido,
+  };
+}
+
+async function registerEmailAttempt({ tipoComprobante, idDocumento, numeroComprobante, destinatario, asunto, result, hasXml, hasRide, userId }) {
+  const estado = result.sent ? 'ENVIADO' : 'ERROR';
+  const insertRes = await db.query(`
+    INSERT INTO sri_email_envios (
+      tipo_comprobante, id_documento, numero_comprobante, destinatario, asunto,
+      estado, mensaje_error, message_id, adjunto_xml, adjunto_ride, id_usuario
+    )
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+    RETURNING *
+  `, [
+    tipoComprobante,
+    idDocumento,
+    numeroComprobante,
+    destinatario,
+    asunto || '',
+    estado,
+    result.error || null,
+    result.messageId || null,
+    hasXml,
+    hasRide,
+    userId || null,
+  ]);
+  return insertRes.rows[0];
+}
+
+async function sendSriDocumentEmail({ tipoComprobante, idDocumento, userId }) {
+  const { config, document, sri, company, totalRetenido } = await loadEmailDocument(tipoComprobante, idDocumento);
+  const to = document[config.recipientEmail];
+  const docNumber = document[config.numberField];
+  const xml = sri.xml_firmado || sri.xml_generado || document.xml_generado || '';
+  const rideHtml = buildRideHtml({ company, document, config, sri, totalRetenido });
+  const result = await sendAuthorizedDocument({
+    to,
+    clientName: document[config.recipientName],
+    docNumber,
+    docType: config.label,
+    authNumber: sri.numero_autorizacion || document.sri_numero_autorizacion || sri.clave_acceso,
+    xml,
+    rideHtml,
+    companyName: company.razon_social,
+  });
+  const history = await registerEmailAttempt({
+    tipoComprobante,
+    idDocumento,
+    numeroComprobante: docNumber,
+    destinatario: to || '',
+    asunto: result.subject || `${config.label} No. ${docNumber}`,
+    result,
+    hasXml: Boolean(xml),
+    hasRide: Boolean(rideHtml),
+    userId,
+  });
+  return { result, history };
 }
 
 async function loadInvoiceForSri(client, idFactura) {
@@ -467,6 +640,13 @@ async function processComplementarySriHandler(req, res, kind) {
     });
 
     await client.query('COMMIT');
+    if (finalState === 'AUTORIZADO') {
+      await sendSriDocumentEmail({
+        tipoComprobante: config.tipo,
+        idDocumento: sri.id_documento,
+        userId: getCurrentUserId(req),
+      }).catch((err) => console.error('Email no enviado:', err));
+    }
     return res.json({
       estado: finalState,
       ambiente: sri.ambiente,
@@ -795,24 +975,11 @@ router.post('/invoices/:id/authorize-test', async (req, res) => {
     });
 
     await client.query('COMMIT');
-
-    // Enviar comprobante por email al cliente si tiene dirección de correo
-    const invoiceDataForEmail = (await client.query(
-      `SELECT f.numero_factura, f.sri_numero_autorizacion, f.xml_generado,
-              c.name AS cliente_nombre, c.email AS cliente_email
-       FROM facturas f JOIN clients c ON f.id_cliente = c.id
-       WHERE f.id_factura = $1`, [sri.id_documento]
-    ).catch(() => ({ rows: [] }))).rows[0];
-    if (invoiceDataForEmail?.cliente_email) {
-      const companyForEmail = await loadCompany(db).catch(() => null);
-      sendAuthorizedDocument({
-        to: invoiceDataForEmail.cliente_email,
-        clientName: invoiceDataForEmail.cliente_nombre,
-        docNumber: invoiceDataForEmail.numero_factura,
-        docType: 'Factura',
-        authNumber: authorization.numeroAutorizacion || sri.clave_acceso,
-        xml: sri.xml_firmado || sri.xml_generado,
-        companyName: companyForEmail?.razon_social,
+    if (estado === 'AUTORIZADO') {
+      await sendSriDocumentEmail({
+        tipoComprobante: '01',
+        idDocumento: sri.id_documento,
+        userId: getCurrentUserId(req),
       }).catch((err) => console.error('Email no enviado:', err));
     }
 
@@ -920,25 +1087,12 @@ router.post('/invoices/:id/process-test', async (req, res) => {
     });
 
     await client.query('COMMIT');
-
-    // Enviar comprobante por email al cliente si fue autorizado
     if (finalState === 'AUTORIZADO') {
-      const invoiceDataForEmail = (await db.query(
-        `SELECT f.numero_factura, c.name AS cliente_nombre, c.email AS cliente_email
-         FROM facturas f JOIN clients c ON f.id_cliente = c.id
-         WHERE f.id_factura = $1`, [sri.id_documento]
-      ).catch(() => ({ rows: [] }))).rows[0];
-      if (invoiceDataForEmail?.cliente_email) {
-        sendAuthorizedDocument({
-          to: invoiceDataForEmail.cliente_email,
-          clientName: invoiceDataForEmail.cliente_nombre,
-          docNumber: invoiceDataForEmail.numero_factura,
-          docType: 'Factura',
-          authNumber: authorization.numeroAutorizacion || sri.clave_acceso,
-          xml: signedXml,
-          companyName: company.razon_social,
-        }).catch((err) => console.error('Email no enviado:', err));
-      }
+      await sendSriDocumentEmail({
+        tipoComprobante: '01',
+        idDocumento: sri.id_documento,
+        userId: getCurrentUserId(req),
+      }).catch((err) => console.error('Email no enviado:', err));
     }
 
     return res.json({
@@ -1004,5 +1158,41 @@ router.post('/withholdings/:id/generate-test-xml', (req, res) => (
 router.post('/withholdings/:id/process-test', (req, res) => (
   processComplementarySriHandler(req, res, 'withholding')
 ));
+
+router.get('/emails/:type/:id', async (req, res) => {
+  try {
+    const tipoComprobante = normalizeEmailDocumentType(req.params.type);
+    const result = await db.query(`
+      SELECT e.*, u.username
+      FROM sri_email_envios e
+      LEFT JOIN usuarios u ON e.id_usuario = u.id_usuario
+      WHERE e.tipo_comprobante = $1 AND e.id_documento = $2
+      ORDER BY e.created_at DESC
+    `, [tipoComprobante, req.params.id]);
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error al consultar historial de email SRI:', error);
+    res.status(400).json({ error: error.message || 'Error al consultar historial de email.' });
+  }
+});
+
+router.post('/emails/:type/:id/send', async (req, res) => {
+  try {
+    const tipoComprobante = normalizeEmailDocumentType(req.params.type);
+    const { result, history } = await sendSriDocumentEmail({
+      tipoComprobante,
+      idDocumento: req.params.id,
+      userId: getCurrentUserId(req),
+    });
+    res.status(result.sent ? 201 : 400).json({
+      sent: result.sent,
+      error: result.error || null,
+      history,
+    });
+  } catch (error) {
+    console.error('Error al enviar email SRI:', error);
+    res.status(400).json({ error: error.message || 'Error al enviar comprobante por email.' });
+  }
+});
 
 module.exports = router;
