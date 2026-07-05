@@ -16,6 +16,7 @@ const {
   authorizeReceipt,
 } = require('../sri_service');
 const { authenticateToken } = require('./auth');
+const { sendAuthorizedDocument } = require('../email_service');
 
 // Proteger todas las rutas de SRI con autenticación y autorización
 router.use(authenticateToken);
@@ -167,7 +168,7 @@ async function ensureGeneratedInvoiceXml(client, idFactura, company) {
     return existingSri;
   }
 
-  const ambiente = 'PRUEBAS';
+  const ambiente = normalize(company.ambiente_sri).toUpperCase() === 'PRODUCCION' ? 'PRODUCCION' : 'PRUEBAS';
   const { xml, claveAcceso } = buildFacturaXml({
     invoice,
     details,
@@ -300,7 +301,7 @@ async function ensureGeneratedComplementaryXml(client, kind, idDocumento, compan
     return existingSri;
   }
 
-  const ambiente = 'PRUEBAS';
+  const ambiente = normalize(company.ambiente_sri).toUpperCase() === 'PRODUCCION' ? 'PRODUCCION' : 'PRUEBAS';
   const { xml, claveAcceso } = config.build({
     document,
     details,
@@ -550,7 +551,7 @@ router.post('/invoices/:id/generate-test-xml', async (req, res) => {
       throw new Error('La factura no tiene detalles para generar XML SRI.');
     }
 
-    const ambiente = 'PRUEBAS';
+    const ambiente = normalize(company.ambiente_sri).toUpperCase() === 'PRODUCCION' ? 'PRODUCCION' : 'PRUEBAS';
     const { xml, claveAcceso } = buildFacturaXml({
       invoice,
       details,
@@ -794,6 +795,27 @@ router.post('/invoices/:id/authorize-test', async (req, res) => {
     });
 
     await client.query('COMMIT');
+
+    // Enviar comprobante por email al cliente si tiene dirección de correo
+    const invoiceDataForEmail = (await client.query(
+      `SELECT f.numero_factura, f.sri_numero_autorizacion, f.xml_generado,
+              c.name AS cliente_nombre, c.email AS cliente_email
+       FROM facturas f JOIN clients c ON f.id_cliente = c.id
+       WHERE f.id_factura = $1`, [sri.id_documento]
+    ).catch(() => ({ rows: [] }))).rows[0];
+    if (invoiceDataForEmail?.cliente_email) {
+      const companyForEmail = await loadCompany(db).catch(() => null);
+      sendAuthorizedDocument({
+        to: invoiceDataForEmail.cliente_email,
+        clientName: invoiceDataForEmail.cliente_nombre,
+        docNumber: invoiceDataForEmail.numero_factura,
+        docType: 'Factura',
+        authNumber: authorization.numeroAutorizacion || sri.clave_acceso,
+        xml: sri.xml_firmado || sri.xml_generado,
+        companyName: companyForEmail?.razon_social,
+      }).catch((err) => console.error('Email no enviado:', err));
+    }
+
     res.json({
       estado,
       ambiente: sri.ambiente,
@@ -805,8 +827,8 @@ router.post('/invoices/:id/authorize-test', async (req, res) => {
     });
   } catch (error) {
     await client.query('ROLLBACK');
-    console.error('Error al autorizar XML SRI pruebas:', error);
-    res.status(400).json({ error: error.message || 'Error al consultar autorizacion SRI en pruebas.' });
+    console.error('Error al autorizar XML SRI:', error);
+    res.status(400).json({ error: error.message || 'Error al consultar autorizacion SRI.' });
   } finally {
     client.release();
   }
@@ -898,6 +920,27 @@ router.post('/invoices/:id/process-test', async (req, res) => {
     });
 
     await client.query('COMMIT');
+
+    // Enviar comprobante por email al cliente si fue autorizado
+    if (finalState === 'AUTORIZADO') {
+      const invoiceDataForEmail = (await db.query(
+        `SELECT f.numero_factura, c.name AS cliente_nombre, c.email AS cliente_email
+         FROM facturas f JOIN clients c ON f.id_cliente = c.id
+         WHERE f.id_factura = $1`, [sri.id_documento]
+      ).catch(() => ({ rows: [] }))).rows[0];
+      if (invoiceDataForEmail?.cliente_email) {
+        sendAuthorizedDocument({
+          to: invoiceDataForEmail.cliente_email,
+          clientName: invoiceDataForEmail.cliente_nombre,
+          docNumber: invoiceDataForEmail.numero_factura,
+          docType: 'Factura',
+          authNumber: authorization.numeroAutorizacion || sri.clave_acceso,
+          xml: signedXml,
+          companyName: company.razon_social,
+        }).catch((err) => console.error('Email no enviado:', err));
+      }
+    }
+
     return res.json({
       estado: finalState,
       ambiente: sri.ambiente,
@@ -909,8 +952,8 @@ router.post('/invoices/:id/process-test', async (req, res) => {
     });
   } catch (error) {
     await client.query('ROLLBACK');
-    console.error('Error al procesar SRI pruebas:', error);
-    return res.status(400).json({ error: error.message || 'Error al procesar SRI en pruebas.' });
+    console.error('Error al procesar SRI:', error);
+    return res.status(400).json({ error: error.message || 'Error al procesar SRI.' });
   } finally {
     client.release();
   }

@@ -2,6 +2,7 @@ import React, { useEffect, useState, useMemo } from 'react';
 import Swal from 'sweetalert2';
 import { apiFetch, apiUrl } from '../../../lib/api';
 import { printDocument } from '../../../lib/printDocument';
+import CreditNoteRideModal from './CreditNoteRideModal';
 
 const money = (value) => (parseFloat(value || 0) || 0).toFixed(2);
 const qty = (value) => (parseFloat(value || 0) || 0).toFixed(2);
@@ -32,6 +33,8 @@ export default function CreditNotesManager() {
 
   // Detalle de NC
   const [selectedNcDetail, setSelectedNcDetail] = useState(null);
+  // RIDE de NC
+  const [viewRide, setViewRide] = useState(null);
 
   // Formulario de emisión
   const [selectedInvoiceId, setSelectedInvoiceId] = useState('');
@@ -552,6 +555,19 @@ export default function CreditNotesManager() {
                             Ver Detalle
                           </button>
                           <button
+                            className="btn btn-secondary ms-1"
+                            style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}
+                            onClick={async () => {
+                              try {
+                                const r = await apiFetch(`/api/credit-notes/${nc.id_nota_credito}`);
+                                const d = await r.json();
+                                if (r.ok) setViewRide(d);
+                              } catch(e) { showAlert('Error al cargar RIDE.', 'error'); }
+                            }}
+                          >
+                            RIDE
+                          </button>
+                          <button
                             className="btn btn-warning ms-1"
                             style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}
                             onClick={() => handleGenerateSriXml(nc)}
@@ -661,6 +677,13 @@ export default function CreditNotesManager() {
           </div>
         );
       })()}
+      {/* RIDE Nota de Crédito */}
+      {viewRide && (
+        <CreditNoteRideModal
+          viewCreditNote={viewRide}
+          onClose={() => setViewRide(null)}
+        />
+      )}
     </div>
   );
 }

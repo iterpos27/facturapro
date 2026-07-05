@@ -251,6 +251,71 @@ export default function CompanyManager() {
     }
   };
 
+  /**
+   * Cambia el ambiente SRI de la empresa mediante confirmación explícita.
+   * El usuario debe escribir exactamente el nombre del nuevo ambiente para confirmar.
+   */
+  const handleSwitchEnvironment = async () => {
+    const nuevoAmbiente = ambienteSri === 'PRUEBAS' ? 'PRODUCCION' : 'PRUEBAS';
+
+    const { value: confirmacionTexto } = await Swal.fire({
+      title: nuevoAmbiente === 'PRODUCCION'
+        ? '⚠️ Cambio a PRODUCCIÓN SRI'
+        : 'Volver a PRUEBAS SRI',
+      html: nuevoAmbiente === 'PRODUCCION'
+        ? `<div style="text-align:left;">
+            <p style="color:#b91c1c;font-weight:600;">ATENCIÓN: Esto tiene efecto legal y fiscal inmediato.</p>
+            <p>Todos los comprobantes emitidos desde este momento serán <strong>comprobantes electrónicos REALES</strong>
+            enviados al SRI de Ecuador con validez tributaria.</p>
+            <p>Para confirmar, escribe <strong>PRODUCCION</strong> en el campo de abajo:</p>
+           </div>`
+        : `<div style="text-align:left;">
+            <p>Cambiarás el ambiente de PRODUCCION a PRUEBAS.</p>
+            <p>Los nuevos comprobantes NO tendrán validez fiscal.</p>
+            <p>Para confirmar, escribe <strong>PRUEBAS</strong> en el campo de abajo:</p>
+           </div>`,
+      input: 'text',
+      inputPlaceholder: nuevoAmbiente,
+      inputAttributes: { autocomplete: 'off', style: 'text-transform:uppercase;font-weight:700;letter-spacing:2px;' },
+      showCancelButton: true,
+      cancelButtonText: 'Cancelar',
+      confirmButtonText: nuevoAmbiente === 'PRODUCCION' ? '🔴 Activar PRODUCCIÓN' : '🟡 Volver a PRUEBAS',
+      confirmButtonColor: nuevoAmbiente === 'PRODUCCION' ? '#dc2626' : '#d97706',
+      icon: nuevoAmbiente === 'PRODUCCION' ? 'warning' : 'info',
+      inputValidator: (value) => {
+        if (value.trim().toUpperCase() !== nuevoAmbiente) {
+          return `Debes escribir exactamente "${nuevoAmbiente}" para confirmar.`;
+        }
+      },
+    });
+
+    if (!confirmacionTexto) return; // cancelado
+
+    try {
+      const response = await apiFetch('/api/company/switch-environment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nuevo_ambiente: nuevoAmbiente, confirmacion: nuevoAmbiente }),
+      });
+      const result = await readApiResponse(response);
+      if (!response.ok) throw new Error(result.error || 'No se pudo cambiar el ambiente.');
+
+      setAmbienteSri(result.ambiente_sri);
+
+      await Swal.fire({
+        title: `Ambiente: ${result.ambiente_sri}`,
+        text: result.advertencia || result.mensaje,
+        icon: result.ambiente_sri === 'PRODUCCION' ? 'success' : 'info',
+        confirmButtonColor: result.ambiente_sri === 'PRODUCCION' ? '#dc2626' : '#1a56db',
+      });
+
+      fetchCompanyData();
+    } catch (err) {
+      showAlert(err.message, 'error');
+    }
+  };
+
+
   return (
     <div className="module-shell">
       <div className="view-header module-header-card d-flex align-items-center justify-content-between">
@@ -420,10 +485,27 @@ export default function CompanyManager() {
                   </div>
                   <div className="col-md-4">
                     <label className="form-label fw-semibold text-secondary">Ambiente SRI</label>
-                    <select className="form-control" value={ambienteSri} onChange={(e) => setAmbienteSri(e.target.value)}>
-                      <option value="PRUEBAS">PRUEBAS</option>
-                      <option value="PRODUCCION">PRODUCCION</option>
-                    </select>
+                    <div className="d-flex align-items-center gap-2">
+                      <span
+                        className={`badge fs-6 px-3 py-2 ${ambienteSri === 'PRODUCCION' ? 'bg-danger' : 'bg-warning text-dark'}`}
+                        style={{ letterSpacing: '1px' }}
+                      >
+                        {ambienteSri === 'PRODUCCION' ? '🔴 PRODUCCIÓN' : '🟡 PRUEBAS'}
+                      </span>
+                      <button
+                        type="button"
+                        className={`btn btn-sm ${ambienteSri === 'PRODUCCION' ? 'btn-outline-warning' : 'btn-outline-danger'}`}
+                        onClick={handleSwitchEnvironment}
+                        title={`Cambiar a ${ambienteSri === 'PRODUCCION' ? 'PRUEBAS' : 'PRODUCCIÓN'}`}
+                      >
+                        Cambiar
+                      </button>
+                    </div>
+                    <small className="text-muted d-block mt-1">
+                      {ambienteSri === 'PRODUCCION'
+                        ? '⚠ Comprobantes con validez fiscal real.'
+                        : 'Comprobantes de prueba sin validez fiscal.'}
+                    </small>
                   </div>
                   <div className="col-md-4">
                     <label className="form-label fw-semibold text-secondary">Tipo emision</label>
@@ -461,8 +543,10 @@ export default function CompanyManager() {
                       className="form-control"
                       value={certificadoClave}
                       onChange={(e) => setCertificadoClave(e.target.value)}
-                      placeholder="Clave de firma"
+                      placeholder={certificadoClave ? '••••••••' : 'Clave de firma'}
+                      autoComplete="new-password"
                     />
+                    <small className="text-muted">Solo cambia si necesitas actualizar la clave.</small>
                   </div>
                 </div>
 

@@ -1,5 +1,6 @@
 const express = require('express');
 const cors = require('cors');
+const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const path = require('path');
 require('dotenv').config();
@@ -30,7 +31,10 @@ const apiLimiter = rateLimit({
   skip: (req) => req.path === '/health', // no limitar el health check
 });
 
-// Middleware
+// Middleware de seguridad — helmet añade cabeceras HTTP defensivas (CSP, HSTS, X-Frame-Options, etc.)
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: 'cross-origin' }, // permite servir uploads al frontend
+}));
 app.use(cors(corsOrigin ? { origin: corsOrigin.split(',').map((origin) => origin.trim()) } : undefined));
 app.use(express.json());
 app.use('/uploads', express.static(path.resolve(__dirname, 'uploads')));

@@ -1,7 +1,105 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import * as XLSX from 'xlsx';
 import { apiFetch } from '../../lib/api';
 
 const money = (value) => `$${Number(value || 0).toFixed(2)}`;
+
+// ── Exportar a Excel ─────────────────────────────────────────────────────────
+function exportToExcel(summary, filters) {
+  if (!summary) return;
+  const wb = XLSX.utils.book_new();
+  const dateRange = filters.date_from || filters.date_to
+    ? `${filters.date_from || 'inicio'} al ${filters.date_to || 'hoy'}`
+    : 'Todos los períodos';
+
+  // Hoja 1 — Resumen General
+  const resumenRows = [
+    ['FacturaPro — Reporte de Resumen', '', dateRange],
+    [],
+    ['FACTURACIÓN'],
+    ['Total Facturado', money(summary.invoices?.total_facturado)],
+    ['Facturas Emitidas', summary.invoices?.facturas_emitidas || 0],
+    ['Facturas Anuladas', summary.invoices?.facturas_anuladas || 0],
+    ['Saldo Pendiente', money(summary.invoices?.saldo_pendiente)],
+    [],
+    ['COMPRAS'],
+    ['Total Compras', money(summary.purchases?.total_compras)],
+    ['Cantidad Compras', summary.purchases?.compras || 0],
+    [],
+    ['DOCUMENTOS'],
+    ['Notas de Crédito', money(summary.creditNotes?.total_notas_credito)],
+    ['Total Retenido', money(summary.withholdings?.total_retenido)],
+    [],
+    ['UTILIDAD'],
+    ['Utilidad Estimada', money(summary.approximateProfit?.utilidad_estimada)],
+    [],
+    ['CAJA'],
+    ['Sesiones Cerradas', summary.cash?.cerradas || 0],
+    ['Ventas Contado', money(summary.cash?.ventas_contado)],
+    ['Ventas Crédito', money(summary.cash?.ventas_credito)],
+    ['Cobros CxC', money(summary.cash?.cobros_cxc)],
+    ['Efectivo Esperado', money(summary.cash?.efectivo_esperado)],
+    ['Diferencia Cierre', money(summary.cash?.diferencia_cierre)],
+  ];
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(resumenRows), 'Resumen');
+
+  // Hoja 2 — Ventas por día
+  if (summary.dailySales?.length) {
+    const rows = [
+      ['Fecha', 'Facturas', 'Total'],
+      ...summary.dailySales.map((r) => [String(r.fecha).slice(0, 10), r.facturas, Number(r.total || 0).toFixed(2)]),
+    ];
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), 'Ventas por día');
+  }
+
+  // Hoja 3 — Productos más vendidos
+  if (summary.topProducts?.length) {
+    const rows = [
+      ['Código', 'Producto', 'Cantidad Vendida', 'Total Ventas'],
+      ...summary.topProducts.map((r) => [r.codigo, r.nombre, Number(r.cantidad || 0).toFixed(2), Number(r.total || 0).toFixed(2)]),
+    ];
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), 'Productos vendidos');
+  }
+
+  // Hoja 4 — Cuentas por Cobrar
+  if (summary.receivables?.length) {
+    const rows = [
+      ['Factura', 'Cliente', 'Identificación', 'Total', 'Saldo'],
+      ...summary.receivables.map((r) => [r.numero_factura, r.cliente_nombre, r.cliente_identificacion, Number(r.total || 0).toFixed(2), Number(r.saldo || 0).toFixed(2)]),
+    ];
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), 'CxC Pendientes');
+  }
+
+  // Hoja 5 — Stock Bajo
+  if (summary.lowStock?.length) {
+    const rows = [
+      ['Código', 'Producto', 'Stock Actual', 'Stock Mínimo'],
+      ...summary.lowStock.map((r) => [r.codigo, r.nombre, Number(r.stock_actual || 0).toFixed(2), Number(r.stock_minimo || 0).toFixed(2)]),
+    ];
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), 'Stock Bajo');
+  }
+
+  // Hoja 6 — Formas de Pago
+  if (summary.paymentBreakdown?.length) {
+    const rows = [
+      ['Método de Pago', 'Total'],
+      ...summary.paymentBreakdown.map((r) => [r.metodo_pago || 'Sin método', Number(r.total || 0).toFixed(2)]),
+    ];
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), 'Formas de pago');
+  }
+
+  // Hoja 7 — Proformas
+  if (summary.proformas?.length) {
+    const rows = [
+      ['Estado', 'Cantidad', 'Total'],
+      ...summary.proformas.map((r) => [r.estado, r.cantidad, Number(r.total || 0).toFixed(2)]),
+    ];
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), 'Proformas');
+  }
+
+  const fileName = `facturapro_reporte_${new Date().toISOString().slice(0, 10)}.xlsx`;
+  XLSX.writeFile(wb, fileName);
+}
 
 export default function ReportsDashboard() {
   const [summary, setSummary] = useState(null);
@@ -57,13 +155,8 @@ export default function ReportsDashboard() {
     }
   };
 
-  useEffect(() => {
-    loadMeta();
-  }, []);
-
-  useEffect(() => {
-    loadSummary();
-  }, [queryString]);
+  useEffect(() => { loadMeta(); }, []);
+  useEffect(() => { loadSummary(); }, [queryString]); // eslint-disable-line
 
   const updateFilter = (key, value) => setFilters((current) => ({ ...current, [key]: value }));
   const invoices = summary?.invoices || {};
@@ -80,7 +173,24 @@ export default function ReportsDashboard() {
           <h1 className="h2 mb-1 text-dark" style={{ fontWeight: '800' }}>Reportes</h1>
           <p className="text-secondary mb-0" style={{ fontSize: '0.92rem' }}>Resumen comercial con filtros operativos.</p>
         </div>
-        <button type="button" className="btn btn-secondary" onClick={loadSummary}>Actualizar</button>
+        <div className="d-flex gap-2">
+          <button type="button" className="btn btn-secondary" onClick={loadSummary}>
+            Actualizar
+          </button>
+          <button
+            type="button"
+            className="btn btn-success d-flex align-items-center gap-1"
+            disabled={!summary || loading}
+            onClick={() => exportToExcel(summary, filters)}
+            title="Exportar todas las tablas a Excel"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+              <path d="M14 14V4.5L9.5 0H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2zM9.5 3A1.5 1.5 0 0 0 11 4.5h2V14a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1h5.5v2z"/>
+              <path d="M4.5 12.5A.5.5 0 0 1 5 12h3.5a.5.5 0 0 1 0 1H5a.5.5 0 0 1-.5-.5zm0-2A.5.5 0 0 1 5 10h6a.5.5 0 0 1 0 1H5a.5.5 0 0 1-.5-.5zm0-2A.5.5 0 0 1 5 8h6a.5.5 0 0 1 0 1H5a.5.5 0 0 1-.5-.5zm0-2A.5.5 0 0 1 5 6h6a.5.5 0 0 1 0 1H5a.5.5 0 0 1-.5-.5z"/>
+            </svg>
+            Exportar Excel
+          </button>
+        </div>
       </div>
 
       <div className="client-data-panel mb-3">
@@ -106,7 +216,7 @@ export default function ReportsDashboard() {
             <Metric title="Saldo pendiente" value={money(invoices.saldo_pendiente)} tone="warning" />
             <Metric title="Anuladas" value={invoices.facturas_anuladas || 0} tone="primary" />
             <Metric title="Compras" value={money(purchases.total_compras)} tone="info" />
-            <Metric title="Notas credito" value={money(creditNotes.total_notas_credito)} tone="warning" />
+            <Metric title="Notas crédito" value={money(creditNotes.total_notas_credito)} tone="warning" />
             <Metric title="Retenido" value={money(withholdings.total_retenido)} tone="primary" />
             <Metric title="Utilidad est." value={money(profit.utilidad_estimada)} tone="success" />
             <Metric title="Cierres caja" value={cash.cerradas || 0} tone="info" />

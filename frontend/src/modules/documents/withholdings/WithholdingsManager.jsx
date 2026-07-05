@@ -2,6 +2,7 @@ import React, { useEffect, useState, useMemo } from 'react';
 import Swal from 'sweetalert2';
 import { apiFetch, apiUrl } from '../../../lib/api';
 import { printDocument } from '../../../lib/printDocument';
+import WithholdingRideModal from './WithholdingRideModal';
 
 const money = (value) => (parseFloat(value || 0) || 0).toFixed(2);
 
@@ -31,6 +32,8 @@ export default function WithholdingsManager() {
 
   // Detalle de Retención
   const [selectedRetDetail, setSelectedRetDetail] = useState(null);
+  // RIDE de Retención
+  const [viewRide, setViewRide] = useState(null);
 
   // Formulario de emisión
   const [selectedPurchaseId, setSelectedPurchaseId] = useState('');
@@ -578,6 +581,19 @@ export default function WithholdingsManager() {
                             Ver Detalle
                           </button>
                           <button
+                            className="btn btn-secondary ms-1"
+                            style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}
+                            onClick={async () => {
+                              try {
+                                const r = await apiFetch(`/api/withholdings/${w.id_retencion}`);
+                                const d = await r.json();
+                                if (r.ok) setViewRide(d);
+                              } catch(e) { showAlert('Error al cargar RIDE.', 'error'); }
+                            }}
+                          >
+                            RIDE
+                          </button>
+                          <button
                             className="btn btn-warning ms-1"
                             style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}
                             onClick={() => handleGenerateSriXml(w)}
@@ -681,6 +697,13 @@ export default function WithholdingsManager() {
           </div>
         );
       })()}
+      {/* RIDE Retención */}
+      {viewRide && (
+        <WithholdingRideModal
+          viewWithholding={viewRide}
+          onClose={() => setViewRide(null)}
+        />
+      )}
     </div>
   );
 }

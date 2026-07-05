@@ -22,6 +22,10 @@
     "db:migrate:professional-finish": "node migrations/migrate_phase11_professional_finish.js",
     "db:migrate:sri-test": "node migrations/migrate_phase12_sri_test.js",
     "db:migrate:indexes": "node migrations/migrate_phase13_indexes.js",
+    "db:migrate:sequentials-permissions": "node migrations/migrate_phase14_sequentials_permissions.js",
+    "db:migrate:sri-complementary": "node migrations/migrate_phase15_sri_complementary.js",
+    "db:migrate:credit-collections": "node migrations/migrate_phase16_credit_collections.js",
+    "db:migrate:all": "node migrations/migrate_all.js",
     "db:drop": "node migrations/migrate_drop.js",
     "db:productos": "node migrations/create_productos_table.js"
   },
@@ -38,10 +42,12 @@
     "ec-sri-invoice-signer": "^1.7.5",
     "express": "^5.2.1",
     "express-rate-limit": "^8.5.2",
+    "helmet": "^8.2.0",
     "joi": "^18.2.3",
     "jsonwebtoken": "^9.0.3",
     "multer": "^2.2.0",
     "node-forge": "^1.4.0",
+    "nodemailer": "^9.0.3",
     "pg": "^8.22.0",
     "pino": "^10.3.1",
     "pino-pretty": "^13.1.3"

@@ -201,4 +201,55 @@ router.post('/logo', logoUpload.single('logo'), async (req, res) => {
   }
 });
 
+/**
+ * POST /api/company/switch-environment
+ * Cambia el ambiente SRI de la empresa (PRUEBAS <-> PRODUCCION).
+ * Requiere el campo "confirmacion" con el valor exacto del nuevo ambiente
+ * para prevenir cambios accidentales.
+ *
+ * Body: { nuevo_ambiente: 'PRODUCCION' | 'PRUEBAS', confirmacion: 'PRODUCCION' | 'PRUEBAS' }
+ */
+router.post('/switch-environment', authenticateToken, async (req, res) => {
+  const { nuevo_ambiente, confirmacion } = req.body || {};
+  const target = String(nuevo_ambiente || '').toUpperCase().trim();
+
+  if (!['PRUEBAS', 'PRODUCCION'].includes(target)) {
+    return res.status(400).json({ error: 'nuevo_ambiente debe ser PRUEBAS o PRODUCCION.' });
+  }
+
+  if (String(confirmacion || '').toUpperCase().trim() !== target) {
+    return res.status(400).json({
+      error: `Para cambiar a ${target} debes confirmar escribiendo exactamente "${target}" en el campo de confirmacion.`,
+    });
+  }
+
+  try {
+    const checkCompany = await db.query('SELECT id_empresa, ambiente_sri FROM empresas LIMIT 1');
+    if (checkCompany.rows.length === 0) {
+      return res.status(400).json({ error: 'Configure primero los datos de la empresa.' });
+    }
+
+    const company = checkCompany.rows[0];
+    if (company.ambiente_sri === target) {
+      return res.json({ mensaje: `El ambiente ya es ${target}. No se realizaron cambios.`, ambiente_sri: target });
+    }
+
+    await db.query(
+      'UPDATE empresas SET ambiente_sri = $1, updated_at = CURRENT_TIMESTAMP WHERE id_empresa = $2',
+      [target, company.id_empresa]
+    );
+
+    return res.json({
+      mensaje: `Ambiente SRI cambiado a ${target} correctamente.`,
+      ambiente_sri: target,
+      advertencia: target === 'PRODUCCION'
+        ? 'ATENCION: Todos los comprobantes emitidos desde ahora se enviaran al SRI de PRODUCCION y tendran validez legal y fiscal.'
+        : null,
+    });
+  } catch (error) {
+    console.error('Error al cambiar ambiente SRI:', error);
+    return res.status(500).json({ error: 'Error al cambiar el ambiente SRI.' });
+  }
+});
+
 module.exports = router;
