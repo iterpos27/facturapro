@@ -588,7 +588,7 @@ export default function WithholdingsManager() {
                                 const r = await apiFetch(`/api/withholdings/${w.id_retencion}`);
                                 const d = await r.json();
                                 if (r.ok) setViewRide(d);
-                              } catch(e) { showAlert('Error al cargar RIDE.', 'error'); }
+                              } catch { showAlert('Error al cargar RIDE.', 'error'); }
                             }}
                           >
                             RIDE

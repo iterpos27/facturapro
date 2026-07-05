@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { apiFetch } from '../../../lib/api';
 
 const entityOptions = [
@@ -16,7 +16,7 @@ export default function AuditManager() {
   const [entity, setEntity] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const fetchAudit = async () => {
+  const fetchAudit = useCallback(async () => {
     setLoading(true);
     try {
       const suffix = entity ? `?entity=${encodeURIComponent(entity)}` : '';
@@ -29,11 +29,11 @@ export default function AuditManager() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [entity]);
 
   useEffect(() => {
     fetchAudit();
-  }, [entity]);
+  }, [fetchAudit]);
 
   return (
     <div className="module-shell">

@@ -562,7 +562,7 @@ export default function CreditNotesManager() {
                                 const r = await apiFetch(`/api/credit-notes/${nc.id_nota_credito}`);
                                 const d = await r.json();
                                 if (r.ok) setViewRide(d);
-                              } catch(e) { showAlert('Error al cargar RIDE.', 'error'); }
+                              } catch { showAlert('Error al cargar RIDE.', 'error'); }
                             }}
                           >
                             RIDE

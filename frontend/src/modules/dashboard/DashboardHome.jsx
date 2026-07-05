@@ -169,6 +169,15 @@ export default function DashboardHome({ currentUser, permissions, onNavigate }) 
               items={receivables.slice(0, 8).map((r) => [r.numero_factura, r.cliente_nombre, money(r.saldo)])}
               emptyMsg="Sin saldos pendientes hoy"
             />
+            <AlertCard
+              label={`Productos mas vendidos (${topProducts.length})`}
+              items={topProducts.slice(0, 8).map((r) => [
+                r.codigo || '-',
+                r.producto_nombre || r.nombre,
+                `${num(r.cantidad_vendida || r.cantidad || 0)} uds`,
+              ])}
+              emptyMsg="Sin ventas de productos hoy"
+            />
           </div>
 
           {/* Accesos rápidos */}
