@@ -180,6 +180,7 @@ export default function InvoiceManager({ onRedirectToCash }) {
             <p><strong>Total:</strong> $${total.toFixed(2)}</p>
             <p><strong>Pagado + anticipo:</strong> $${paidAmount.toFixed(2)}</p>
             <p><strong>Saldo:</strong> $${balanceAmount.toFixed(2)}</p>
+            ${balanceAmount > 0 ? `<p><strong>Credito:</strong> ${payload.dias_credito || 15} dias</p>` : ''}
             <p><strong>Cambio:</strong> $${changeAmount.toFixed(2)}</p>
           </div>
         `,

@@ -204,6 +204,12 @@ export default function InvoiceRideModal({ viewInvoice, onClose }) {
                   <td>{parseFloat(invoice.saldo || 0) > 0 ? 'CREDITO' : 'CONTADO'}</td>
                   <td className="text-end">{money(invoice.saldo || invoice.total)}</td>
                 </tr>
+                {invoice.fecha_vencimiento && parseFloat(invoice.saldo || 0) > 0 && (
+                  <tr>
+                    <td>Vence credito</td>
+                    <td className="text-end">{new Date(invoice.fecha_vencimiento).toLocaleDateString()}</td>
+                  </tr>
+                )}
                 <tr className="fw-bold">
                   <td>TOTAL</td>
                   <td className="text-end">{money(invoice.total)}</td>

@@ -15,6 +15,14 @@ const getSriBadgeClass = (status) => {
   return 'bg-secondary';
 };
 
+const getCollectionBadgeClass = (status) => {
+  if (status === 'PAGADA') return 'bg-success';
+  if (status === 'VENCIDA') return 'bg-danger';
+  if (status === 'ABONADA' || status === 'EN_GESTION') return 'bg-warning text-dark';
+  if (status === 'PENDIENTE') return 'bg-secondary';
+  return 'bg-secondary';
+};
+
 export default function InvoiceTable({
   invoices,
   onViewRide,
@@ -41,6 +49,7 @@ export default function InvoiceTable({
               <th>Fecha Emision</th>
               <th>Monto</th>
               <th>Saldo</th>
+              <th>Cobranza</th>
               <th>Estado</th>
               <th>SRI</th>
               <th style={{ width: '340px' }}>Acciones</th>
@@ -58,6 +67,16 @@ export default function InvoiceTable({
                 <td style={{ fontWeight: 800 }}>${parseFloat(invoice.total).toFixed(2)}</td>
                 <td style={{ color: parseFloat(invoice.saldo) > 0 ? '#b91c1c' : 'inherit' }}>
                   ${parseFloat(invoice.saldo || 0).toFixed(2)}
+                </td>
+                <td>
+                  <span className={`badge ${getCollectionBadgeClass(invoice.estado_cobranza)}`}>
+                    {invoice.estado_cobranza || (parseFloat(invoice.saldo || 0) > 0 ? 'PENDIENTE' : 'PAGADA')}
+                  </span>
+                  {invoice.fecha_vencimiento && parseFloat(invoice.saldo || 0) > 0 && (
+                    <small className="d-block text-muted">
+                      Vence: {new Date(invoice.fecha_vencimiento).toLocaleDateString()}
+                    </small>
+                  )}
                 </td>
                 <td>
                   <span className={`badge ${getStatusBadgeClass(invoice.estado)}`} style={{ fontWeight: 'bold' }}>
@@ -143,6 +162,12 @@ export default function InvoiceTable({
               <div className="client-card-info-item">
                 <span className="info-label">SRI:</span>
                 <span className="info-val">{invoice.sri_estado || 'PENDIENTE'}</span>
+              </div>
+              <div className="client-card-info-item">
+                <span className="info-label">Cobranza:</span>
+                <span className="info-val">
+                  {invoice.estado_cobranza || (parseFloat(invoice.saldo || 0) > 0 ? 'PENDIENTE' : 'PAGADA')}
+                </span>
               </div>
             </div>
             <div className="client-card-actions">

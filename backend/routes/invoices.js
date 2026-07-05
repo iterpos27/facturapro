@@ -37,12 +37,36 @@ router.get('/', async (req, res) => {
 router.get('/receivables', async (req, res) => {
   try {
     const result = await db.query(`
-      SELECT f.*, c.name as cliente_nombre, c.identification_number as cliente_identificacion, c.phone as cliente_telefono, u.username
+      SELECT f.*, c.name as cliente_nombre, c.identification_number as cliente_identificacion, c.phone as cliente_telefono, u.username,
+             CASE
+               WHEN COALESCE(f.saldo, 0) <= 0 THEN 'PAGADA'
+               WHEN f.fecha_vencimiento IS NOT NULL AND f.fecha_vencimiento < CURRENT_DATE THEN 'VENCIDA'
+               WHEN EXISTS (
+                 SELECT 1 FROM factura_cobros fc WHERE fc.id_factura = f.id_factura
+               ) THEN 'ABONADA'
+               ELSE COALESCE(f.estado_cobranza, 'PENDIENTE')
+             END AS estado_cobranza_actual,
+             CASE
+               WHEN f.fecha_vencimiento IS NULL THEN 0
+               ELSE GREATEST((CURRENT_DATE - f.fecha_vencimiento), 0)
+             END AS dias_vencidos,
+             (
+               SELECT fg.fecha_compromiso
+               FROM factura_gestiones_cobranza fg
+               WHERE fg.id_factura = f.id_factura AND fg.estado = 'ABIERTA'
+               ORDER BY fg.fecha_compromiso ASC NULLS LAST, fg.created_at DESC
+               LIMIT 1
+             ) AS proxima_gestion,
+             (
+               SELECT COUNT(*)::int
+               FROM factura_gestiones_cobranza fg
+               WHERE fg.id_factura = f.id_factura
+             ) AS gestiones_count
       FROM facturas f
       JOIN clients c ON f.id_cliente = c.id
       LEFT JOIN usuarios u ON f.id_usuario = u.id_usuario
       WHERE f.estado = 'EMITIDA' AND f.saldo > 0
-      ORDER BY f.fecha_emision DESC
+      ORDER BY f.fecha_vencimiento ASC NULLS LAST, f.fecha_emision DESC
     `);
     res.json(result.rows);
   } catch (error) {
@@ -103,6 +127,17 @@ router.get('/:id', async (req, res) => {
       throw error;
     });
 
+    const gestionesRes = await db.query(`
+      SELECT fg.*, u.username
+      FROM factura_gestiones_cobranza fg
+      LEFT JOIN usuarios u ON fg.id_usuario = u.id_usuario
+      WHERE fg.id_factura = $1
+      ORDER BY fg.created_at DESC
+    `, [req.params.id]).catch((error) => {
+      if (error.code === '42P01') return { rows: [] };
+      throw error;
+    });
+
     const companyRes = await db.query('SELECT * FROM empresas LIMIT 1');
 
     res.json({
@@ -110,6 +145,7 @@ router.get('/:id', async (req, res) => {
       details: detailsRes.rows,
       payments: paymentsRes.rows,
       cobros: cobrosRes.rows,
+      gestiones: gestionesRes.rows,
       company: companyRes.rows[0] || null,
     });
   } catch (error) {
@@ -119,7 +155,18 @@ router.get('/:id', async (req, res) => {
 });
 
 router.post('/', validate(schemas.createInvoice), async (req, res) => {
-  const { id_cliente, id_metodo_pago, id_proforma, items, monto_pago, anticipo, observacion, payments } = req.body;
+  const {
+    id_cliente,
+    id_metodo_pago,
+    id_proforma,
+    items,
+    monto_pago,
+    anticipo,
+    observacion,
+    payments,
+    tipo_pago,
+    dias_credito,
+  } = req.body;
   const id_usuario = req.user.id_usuario;
 
   const normalizedPayments = Array.isArray(payments)
@@ -246,6 +293,16 @@ router.post('/', validate(schemas.createInvoice), async (req, res) => {
     const totalPagado = anticipoVal + pagoVal;
     const cambio = Math.max(totalPagado - totalFactura, 0);
     const saldo = Math.max(totalFactura - totalPagado, 0);
+    const tipoVenta = saldo > 0 || String(tipo_pago || '').toUpperCase() === 'CREDITO' ? 'CREDITO' : 'CONTADO';
+    const diasCredito = tipoVenta === 'CREDITO'
+      ? Math.max(parseInt(dias_credito || 15, 10) || 15, 1)
+      : 0;
+    const fechaVencimiento = tipoVenta === 'CREDITO'
+      ? new Date(Date.now() + diasCredito * 24 * 60 * 60 * 1000)
+      : null;
+    const estadoCobranza = saldo <= 0
+      ? 'PAGADA'
+      : 'PENDIENTE';
 
     const companyRes = await client.query('SELECT ruc FROM empresas LIMIT 1');
     if (companyRes.rows.length === 0 || !companyRes.rows[0].ruc) {
@@ -266,8 +323,9 @@ router.post('/', validate(schemas.createInvoice), async (req, res) => {
       INSERT INTO facturas (
         id_sucursal, secuencial, numero_factura, id_cliente, id_usuario, id_sesion_caja,
         subtotal_sin_impuestos, subtotal_con_iva, subtotal_iva_cero, descuento_total,
-        valor_iva, total, id_metodo_pago, id_proforma, monto_pago, anticipo, cambio, saldo, observacion, clave_acceso
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
+        valor_iva, total, id_metodo_pago, id_proforma, monto_pago, anticipo, cambio, saldo, observacion, clave_acceso,
+        tipo_venta, dias_credito, fecha_vencimiento, estado_cobranza
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24)
       RETURNING *
     `, [
       id_sucursal,
@@ -290,6 +348,10 @@ router.post('/', validate(schemas.createInvoice), async (req, res) => {
       saldo,
       observacion || '',
       accessKey,
+      tipoVenta,
+      diasCredito,
+      fechaVencimiento,
+      estadoCobranza,
     ]);
     const id_factura = invoiceInserted.rows[0].id_factura;
 
@@ -352,7 +414,7 @@ router.post('/', validate(schemas.createInvoice), async (req, res) => {
       entityId: id_factura,
       action: id_proforma ? 'FACTURAR_PROFORMA' : 'EMITIR_FACTURA',
       userId: id_usuario,
-      detail: { numero_factura: numeroFactura, id_proforma: id_proforma || null, total: totalFactura, saldo },
+      detail: { numero_factura: numeroFactura, id_proforma: id_proforma || null, total: totalFactura, saldo, tipo_venta: tipoVenta, dias_credito: diasCredito },
     });
 
     await client.query('COMMIT');
@@ -480,10 +542,17 @@ router.post('/:id/payments', async (req, res) => {
 
     // Actualizar saldo
     const newSaldo = Math.max(currentSaldo - paymentAmount, 0);
-    await client.query(
-      'UPDATE facturas SET saldo = $1 WHERE id_factura = $2',
-      [newSaldo, id]
-    );
+    const newCollectionState = newSaldo <= 0 ? 'PAGADA' : 'ABONADA';
+    await client.query(`
+      UPDATE facturas
+      SET saldo = $1,
+          estado_cobranza = CASE
+            WHEN $1::numeric <= 0 THEN 'PAGADA'
+            WHEN fecha_vencimiento IS NOT NULL AND fecha_vencimiento < CURRENT_DATE THEN 'VENCIDA'
+            ELSE $3
+          END
+      WHERE id_factura = $2
+    `, [newSaldo, id, newCollectionState]);
 
     // Auditoría
     await writeAudit(client, {
@@ -510,6 +579,96 @@ router.post('/:id/payments', async (req, res) => {
     await client.query('ROLLBACK');
     console.error('Error al registrar cobro cxc:', error);
     res.status(400).json({ error: error.message || 'Error al procesar el cobro.' });
+  } finally {
+    client.release();
+  }
+});
+
+router.get('/:id/collections', async (req, res) => {
+  try {
+    const result = await db.query(`
+      SELECT fg.*, u.username
+      FROM factura_gestiones_cobranza fg
+      LEFT JOIN usuarios u ON fg.id_usuario = u.id_usuario
+      WHERE fg.id_factura = $1
+      ORDER BY fg.created_at DESC
+    `, [req.params.id]);
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error al consultar gestiones de cobranza:', error);
+    res.status(500).json({ error: 'Error al consultar gestiones de cobranza.' });
+  }
+});
+
+router.post('/:id/collections', async (req, res) => {
+  const { id } = req.params;
+  const { tipo_gestion, nota, fecha_compromiso, monto_compromiso, estado } = req.body || {};
+  const id_usuario = req.user.id_usuario;
+
+  if (!String(nota || '').trim()) {
+    return res.status(400).json({ error: 'La nota de gestion es obligatoria.' });
+  }
+
+  const client = await db.pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const factRes = await client.query(
+      'SELECT id_factura, numero_factura, saldo, estado FROM facturas WHERE id_factura = $1 FOR UPDATE',
+      [id]
+    );
+    if (factRes.rows.length === 0) {
+      throw new Error('Factura no encontrada.');
+    }
+    if (factRes.rows[0].estado === 'ANULADA') {
+      throw new Error('No se puede registrar gestion sobre una factura anulada.');
+    }
+
+    const gestionRes = await client.query(`
+      INSERT INTO factura_gestiones_cobranza (
+        id_factura, tipo_gestion, nota, fecha_compromiso, monto_compromiso, estado, id_usuario
+      )
+      VALUES ($1, $2, $3, NULLIF($4, '')::date, $5, $6, $7)
+      RETURNING *
+    `, [
+      id,
+      String(tipo_gestion || 'LLAMADA').trim().toUpperCase(),
+      String(nota).trim(),
+      fecha_compromiso || '',
+      Math.max(parseFloat(monto_compromiso || 0) || 0, 0),
+      String(estado || 'ABIERTA').trim().toUpperCase(),
+      id_usuario,
+    ]);
+
+    await client.query(`
+      UPDATE facturas
+      SET estado_cobranza = CASE
+        WHEN COALESCE(saldo, 0) <= 0 THEN 'PAGADA'
+        WHEN fecha_vencimiento IS NOT NULL AND fecha_vencimiento < CURRENT_DATE THEN 'VENCIDA'
+        ELSE 'EN_GESTION'
+      END
+      WHERE id_factura = $1
+    `, [id]);
+
+    await writeAudit(client, {
+      entity: 'facturas',
+      entityId: id,
+      action: 'REGISTRAR_GESTION_COBRANZA',
+      userId: id_usuario,
+      detail: {
+        numero_factura: factRes.rows[0].numero_factura,
+        tipo_gestion: tipo_gestion || 'LLAMADA',
+        fecha_compromiso: fecha_compromiso || null,
+        monto_compromiso: monto_compromiso || 0,
+      },
+    });
+
+    await client.query('COMMIT');
+    res.status(201).json(gestionRes.rows[0]);
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Error al registrar gestion de cobranza:', error);
+    res.status(400).json({ error: error.message || 'Error al registrar gestion de cobranza.' });
   } finally {
     client.release();
   }

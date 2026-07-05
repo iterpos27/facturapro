@@ -3,6 +3,16 @@ import Swal from 'sweetalert2';
 import { apiFetch } from '../../../lib/api';
 import InvoiceRideModal from '../invoices/components/InvoiceRideModal';
 
+const money = (value) => (parseFloat(value || 0) || 0).toFixed(2);
+
+const getCollectionBadge = (item) => {
+  const status = String(item.estado_cobranza_actual || item.estado_cobranza || 'PENDIENTE').toUpperCase();
+  if (status === 'VENCIDA') return 'bg-danger';
+  if (status === 'ABONADA' || status === 'EN_GESTION') return 'bg-warning text-dark';
+  if (status === 'PAGADA') return 'bg-success';
+  return 'bg-secondary';
+};
+
 export default function ReceivablesManager() {
   const [receivables, setReceivables] = useState([]);
   const [paymentMethods, setPaymentMethods] = useState([]);
@@ -13,6 +23,7 @@ export default function ReceivablesManager() {
   // Estados de modales
   const [selectedInvoice, setSelectedInvoice] = useState(null);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [showCollectionModal, setShowCollectionModal] = useState(false);
   const [viewInvoiceDetail, setViewInvoiceDetail] = useState(null);
 
   // Formulario de Abono
@@ -20,6 +31,11 @@ export default function ReceivablesManager() {
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState('');
   const [reference, setReference] = useState('');
   const [savingPayment, setSavingPayment] = useState(false);
+  const [collectionType, setCollectionType] = useState('LLAMADA');
+  const [collectionNote, setCollectionNote] = useState('');
+  const [promiseDate, setPromiseDate] = useState('');
+  const [promiseAmount, setPromiseAmount] = useState('');
+  const [savingCollection, setSavingCollection] = useState(false);
 
   useEffect(() => {
     fetchReceivables();
@@ -97,6 +113,15 @@ export default function ReceivablesManager() {
     setShowPaymentModal(true);
   };
 
+  const handleOpenCollection = (invoice) => {
+    setSelectedInvoice(invoice);
+    setCollectionType('LLAMADA');
+    setCollectionNote('');
+    setPromiseDate('');
+    setPromiseAmount(parseFloat(invoice.saldo || 0).toFixed(2));
+    setShowCollectionModal(true);
+  };
+
   const handleRegisterPayment = async (e) => {
     e.preventDefault();
     if (!selectedInvoice || !currentUser) return;
@@ -137,6 +162,42 @@ export default function ReceivablesManager() {
       Swal.fire('Error', error.message, 'error');
     } finally {
       setSavingPayment(false);
+    }
+  };
+
+  const handleRegisterCollection = async (e) => {
+    e.preventDefault();
+    if (!selectedInvoice || !currentUser) return;
+
+    if (!collectionNote.trim()) {
+      Swal.fire('Error', 'La nota de gestion es obligatoria.', 'error');
+      return;
+    }
+
+    setSavingCollection(true);
+    try {
+      const response = await apiFetch(`/api/invoices/${selectedInvoice.id_factura}/collections`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tipo_gestion: collectionType,
+          nota: collectionNote,
+          fecha_compromiso: promiseDate,
+          monto_compromiso: parseFloat(promiseAmount) || 0,
+          estado: 'ABIERTA',
+        }),
+      });
+
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'No se pudo registrar la gestion.');
+
+      showAlert('Gestion de cobranza registrada.', 'success');
+      setShowCollectionModal(false);
+      fetchReceivables();
+    } catch (error) {
+      Swal.fire('Error', error.message, 'error');
+    } finally {
+      setSavingCollection(false);
     }
   };
 
@@ -218,9 +279,11 @@ export default function ReceivablesManager() {
                   <th>No. Factura</th>
                   <th>Cliente</th>
                   <th>Fecha Emisión</th>
+                  <th>Vence</th>
+                  <th>Cobranza</th>
                   <th className="text-end">Monto Total</th>
                   <th className="text-end">Saldo Pendiente</th>
-                  <th style={{ width: '220px' }}>Acciones</th>
+                  <th style={{ width: '310px' }}>Acciones</th>
                 </tr>
               </thead>
               <tbody>
@@ -232,16 +295,41 @@ export default function ReceivablesManager() {
                       <small className="text-muted">{item.cliente_identificacion}</small>
                     </td>
                     <td>{new Date(item.fecha_emision).toLocaleDateString()}</td>
-                    <td className="text-end fw-semibold">${parseFloat(item.total).toFixed(2)}</td>
-                    <td className="text-end fw-bold text-danger">${parseFloat(item.saldo).toFixed(2)}</td>
                     <td>
-                      <div style={{ display: 'flex', gap: '0.5rem' }}>
+                      {item.fecha_vencimiento ? new Date(item.fecha_vencimiento).toLocaleDateString() : 'Sin plazo'}
+                      {parseInt(item.dias_vencidos || 0, 10) > 0 && (
+                        <small className="d-block text-danger fw-bold">
+                          {item.dias_vencidos} dias vencida
+                        </small>
+                      )}
+                    </td>
+                    <td>
+                      <span className={`badge ${getCollectionBadge(item)}`}>
+                        {item.estado_cobranza_actual || item.estado_cobranza || 'PENDIENTE'}
+                      </span>
+                      {item.proxima_gestion && (
+                        <small className="d-block text-muted">
+                          Promesa: {new Date(item.proxima_gestion).toLocaleDateString()}
+                        </small>
+                      )}
+                    </td>
+                    <td className="text-end fw-semibold">${money(item.total)}</td>
+                    <td className="text-end fw-bold text-danger">${money(item.saldo)}</td>
+                    <td>
+                      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
                         <button
                           className="btn btn-primary"
                           style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}
                           onClick={() => handleOpenPayment(item)}
                         >
                           Registrar Abono
+                        </button>
+                        <button
+                          className="btn btn-warning"
+                          style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}
+                          onClick={() => handleOpenCollection(item)}
+                        >
+                          Gestionar
                         </button>
                         <button
                           className="btn btn-info text-white"
@@ -264,8 +352,8 @@ export default function ReceivablesManager() {
               <div key={item.id_factura} className="client-mobile-card">
                 <div className="client-card-header">
                   <span className="client-name">{item.numero_factura}</span>
-                  <span className="badge bg-danger" style={{ fontWeight: 'bold' }}>
-                    PENDIENTE
+                  <span className={`badge ${getCollectionBadge(item)}`} style={{ fontWeight: 'bold' }}>
+                    {item.estado_cobranza_actual || item.estado_cobranza || 'PENDIENTE'}
                   </span>
                 </div>
                 <div className="client-card-body">
@@ -278,9 +366,9 @@ export default function ReceivablesManager() {
                   <div className="client-card-info-item">
                     <span className="info-label">Total / Saldo:</span>
                     <span className="info-val">
-                      <strong>${parseFloat(item.total).toFixed(2)}</strong> /{' '}
+                      <strong>${money(item.total)}</strong> /{' '}
                       <span className="text-danger fw-bold">
-                        ${parseFloat(item.saldo).toFixed(2)}
+                        ${money(item.saldo)}
                       </span>
                     </span>
                   </div>
@@ -288,10 +376,20 @@ export default function ReceivablesManager() {
                     <span className="info-label">Fecha:</span>
                     <span className="info-val">{new Date(item.fecha_emision).toLocaleDateString()}</span>
                   </div>
+                  <div className="client-card-info-item">
+                    <span className="info-label">Vence:</span>
+                    <span className="info-val">
+                      {item.fecha_vencimiento ? new Date(item.fecha_vencimiento).toLocaleDateString() : 'Sin plazo'}
+                      {parseInt(item.dias_vencidos || 0, 10) > 0 ? ` (${item.dias_vencidos} dias)` : ''}
+                    </span>
+                  </div>
                 </div>
                 <div className="client-card-actions">
                   <button className="btn btn-primary" onClick={() => handleOpenPayment(item)}>
                     Registrar Abono
+                  </button>
+                  <button className="btn btn-warning" onClick={() => handleOpenCollection(item)}>
+                    Gestionar
                   </button>
                   <button className="btn btn-info text-white" onClick={() => handleFetchInvoiceDetail(item.id_factura)}>
                     Ver RIDE
@@ -389,6 +487,93 @@ export default function ReceivablesManager() {
                 </button>
                 <button type="submit" className="btn btn-success" disabled={savingPayment}>
                   {savingPayment ? 'Registrando...' : 'Registrar Cobro'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL GESTION COBRANZA */}
+      {showCollectionModal && selectedInvoice && (
+        <div className="modal-overlay" onClick={() => setShowCollectionModal(false)}>
+          <div
+            className="modal-container modal-container-clean compact-modal"
+            style={{ maxWidth: '560px' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              className="modal-close-btn"
+              onClick={() => setShowCollectionModal(false)}
+              aria-label="Cerrar modal"
+            >
+              X
+            </button>
+            <h2 className="text-dark fw-bold">Gestionar Cobranza</h2>
+            <p className="modal-support-copy">
+              Registra el seguimiento de la factura <strong>{selectedInvoice.numero_factura}</strong>.
+              Saldo pendiente: <strong>${money(selectedInvoice.saldo)}</strong>.
+            </p>
+
+            <form onSubmit={handleRegisterCollection}>
+              <div className="row g-2">
+                <div className="col-md-6">
+                  <label className="form-label fw-bold">Tipo de gestion *</label>
+                  <select
+                    className="form-select"
+                    value={collectionType}
+                    onChange={(event) => setCollectionType(event.target.value)}
+                  >
+                    <option value="LLAMADA">Llamada</option>
+                    <option value="WHATSAPP">WhatsApp</option>
+                    <option value="VISITA">Visita</option>
+                    <option value="ACUERDO">Acuerdo de pago</option>
+                  </select>
+                </div>
+                <div className="col-md-3">
+                  <label className="form-label fw-bold">Promesa</label>
+                  <input
+                    type="date"
+                    className="form-control"
+                    value={promiseDate}
+                    onChange={(event) => setPromiseDate(event.target.value)}
+                  />
+                </div>
+                <div className="col-md-3">
+                  <label className="form-label fw-bold">Monto</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    className="form-control text-end"
+                    value={promiseAmount}
+                    onChange={(event) => setPromiseAmount(event.target.value)}
+                    min="0"
+                  />
+                </div>
+              </div>
+
+              <div className="mt-3">
+                <label className="form-label fw-bold">Nota de gestion *</label>
+                <textarea
+                  className="form-control"
+                  rows="4"
+                  value={collectionNote}
+                  onChange={(event) => setCollectionNote(event.target.value)}
+                  placeholder="Ej: Cliente confirma pago por transferencia el viernes."
+                  required
+                />
+              </div>
+
+              <div className="d-flex justify-content-end gap-2 mt-4 pt-3 border-top">
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => setShowCollectionModal(false)}
+                >
+                  Cancelar
+                </button>
+                <button type="submit" className="btn btn-success" disabled={savingCollection}>
+                  {savingCollection ? 'Guardando...' : 'Guardar Gestion'}
                 </button>
               </div>
             </form>

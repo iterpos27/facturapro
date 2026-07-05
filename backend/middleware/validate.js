@@ -59,6 +59,8 @@ const schemas = {
     monto_pago: Joi_money.optional(),
     anticipo: Joi_money.optional(),
     observacion: Joi_str(500).optional().allow(''),
+    tipo_pago: Joi.string().valid('CONTADO', 'CREDITO').optional(),
+    dias_credito: Joi.number().integer().min(0).max(365).optional(),
     payments: Joi.array().optional(),
   }),
 

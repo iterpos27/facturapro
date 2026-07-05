@@ -28,6 +28,12 @@ const createEmptyPayment = (methodId = '') => ({
   referencia: '',
 });
 
+const addDaysValue = (days) => {
+  const date = new Date();
+  date.setDate(date.getDate() + (parseInt(days, 10) || 0));
+  return date.toISOString().slice(0, 10);
+};
+
 export default function InvoiceFormModal({
   clients,
   products,
@@ -48,6 +54,7 @@ export default function InvoiceFormModal({
   const [notes, setNotes] = useState('');
   const [anticipo, setAnticipo] = useState('');
   const [tipoPago, setTipoPago] = useState('CONTADO');
+  const [diasCredito, setDiasCredito] = useState(15);
 
   // Lookup modal de cliente
   const [showClientLookup, setShowClientLookup] = useState(false);
@@ -290,6 +297,7 @@ export default function InvoiceFormModal({
     setPaymentRows([createEmptyPayment(selectedPayment)]);
     setAnticipo('');
     setTipoPago('CONTADO');
+    setDiasCredito(15);
   };
 
   const handlePaymentChange = (index, field, value) => {
@@ -354,6 +362,7 @@ export default function InvoiceFormModal({
         validPayments[0]?.id_metodo_pago || parseInt(selectedPayment, 10),
       id_proforma: sourceProforma?.id || null,
       tipo_pago: tipoPago,
+      dias_credito: tipoPago === 'CREDITO' ? parseInt(diasCredito, 10) || 15 : 0,
       items: validItems.map((item) => ({
         id_producto: parseInt(item.id_producto, 10),
         cantidad: parseFloat(item.cantidad),
@@ -471,7 +480,10 @@ export default function InvoiceFormModal({
                   type="button"
                   className={`btn btn-sm flex-fill ${tipoPago === 'CONTADO' ? 'btn-primary' : 'btn-outline-secondary'}`}
                   style={{ borderRadius: '10px', fontWeight: 700, fontSize: '0.78rem' }}
-                  onClick={() => setTipoPago('CONTADO')}
+                  onClick={() => {
+                    setTipoPago('CONTADO');
+                    setDiasCredito(0);
+                  }}
                 >
                   Contado
                 </button>
@@ -479,7 +491,10 @@ export default function InvoiceFormModal({
                   type="button"
                   className={`btn btn-sm flex-fill ${tipoPago === 'CREDITO' ? 'btn-warning' : 'btn-outline-secondary'}`}
                   style={{ borderRadius: '10px', fontWeight: 700, fontSize: '0.78rem' }}
-                  onClick={() => setTipoPago('CREDITO')}
+                  onClick={() => {
+                    setTipoPago('CREDITO');
+                    setDiasCredito((current) => parseInt(current, 10) > 0 ? current : 15);
+                  }}
                 >
                   Crédito
                 </button>
@@ -509,6 +524,27 @@ export default function InvoiceFormModal({
             <div className="col-md-2">
               <label className="form-label fw-bold mb-1">Cajero</label>
               <input className="form-control" value={currentUser?.username || ''} readOnly disabled />
+            </div>
+            <div className="col-md-1">
+              <label className="form-label fw-bold mb-1">Plazo</label>
+              <input
+                type="number"
+                className="form-control"
+                value={diasCredito}
+                onChange={(event) => setDiasCredito(event.target.value)}
+                min={tipoPago === 'CREDITO' ? '1' : '0'}
+                max="365"
+                disabled={tipoPago !== 'CREDITO'}
+              />
+            </div>
+            <div className="col-md-1">
+              <label className="form-label fw-bold mb-1">Vence</label>
+              <input
+                className="form-control"
+                value={tipoPago === 'CREDITO' ? addDaysValue(diasCredito) : 'Contado'}
+                readOnly
+                disabled
+              />
             </div>
             <div className="col-md-2">
               <label className="form-label fw-bold mb-1">Observaciones</label>
@@ -758,7 +794,6 @@ export default function InvoiceFormModal({
                                 handlePaymentChange(index, 'monto', e.target.value)
                               }
                               placeholder="0.00"
-                              required
                             />
                           </td>
                           <td>
