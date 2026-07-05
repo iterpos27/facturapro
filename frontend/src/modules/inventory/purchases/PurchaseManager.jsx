@@ -32,6 +32,9 @@ export default function PurchaseManager() {
   const [selectedSupplier, setSelectedSupplier] = useState('');
   const [purchaseDate, setPurchaseDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [notes, setNotes] = useState('');
+  const [tipoPago, setTipoPago] = useState('CONTADO');
+  const [diasCredito, setDiasCredito] = useState(15);
+  const [montoPagado, setMontoPagado] = useState('');
   const [purchaseItems, setPurchaseItems] = useState([
     { id_producto: '', cantidad: 1, costo_unitario: 0, iva_porcentaje: 0 },
   ]);
@@ -278,6 +281,9 @@ export default function PurchaseManager() {
       valor_iva: totals.valorIvaTotal,
       total: totals.total,
       observacion: notes,
+      tipo_pago: tipoPago,
+      dias_credito: tipoPago === 'CREDITO' ? parseInt(diasCredito, 10) || 15 : 0,
+      monto_pagado: parseFloat(montoPagado) || 0,
       items: validItems.map((item) => ({
         id_producto: parseInt(item.id_producto, 10),
         cantidad: parseFloat(item.cantidad),
@@ -301,6 +307,9 @@ export default function PurchaseManager() {
       setShowForm(false);
       setInvoiceNumber('');
       setNotes('');
+      setTipoPago('CONTADO');
+      setDiasCredito(15);
+      setMontoPagado('');
       setPurchaseItems([{ id_producto: '', cantidad: 1, costo_unitario: 0, iva_porcentaje: 0 }]);
       fetchPurchases();
     } catch (err) {
@@ -384,6 +393,32 @@ export default function PurchaseManager() {
                     onChange={(e) => setPurchaseDate(e.target.value)}
                     required
                   />
+                </div>
+              </div>
+
+              <div className="row g-2 mb-3">
+                <div className="col-md-3">
+                  <label className="form-label fw-bold">Tipo de compra</label>
+                  <div className="d-flex gap-1">
+                    <button type="button" className={`btn btn-sm flex-fill ${tipoPago === 'CONTADO' ? 'btn-primary' : 'btn-outline-secondary'}`} onClick={() => { setTipoPago('CONTADO'); setDiasCredito(0); setMontoPagado(totals.total.toFixed(2)); }}>
+                      Contado
+                    </button>
+                    <button type="button" className={`btn btn-sm flex-fill ${tipoPago === 'CREDITO' ? 'btn-warning' : 'btn-outline-secondary'}`} onClick={() => { setTipoPago('CREDITO'); setDiasCredito((current) => parseInt(current, 10) > 0 ? current : 15); }}>
+                      Credito
+                    </button>
+                  </div>
+                </div>
+                <div className="col-md-2">
+                  <label className="form-label fw-bold">Plazo dias</label>
+                  <input type="number" className="form-control" value={diasCredito} min={tipoPago === 'CREDITO' ? '1' : '0'} max="365" disabled={tipoPago !== 'CREDITO'} onChange={(e) => setDiasCredito(e.target.value)} />
+                </div>
+                <div className="col-md-3">
+                  <label className="form-label fw-bold">Pago inicial</label>
+                  <input type="number" step="0.01" className="form-control text-end" value={montoPagado} min="0" max={totals.total} onChange={(e) => setMontoPagado(e.target.value)} placeholder="0.00" />
+                </div>
+                <div className="col-md-4">
+                  <label className="form-label fw-bold">Saldo proveedor</label>
+                  <input className="form-control text-end fw-bold" value={`$${Math.max(totals.total - (parseFloat(montoPagado) || 0), 0).toFixed(2)}`} readOnly disabled />
                 </div>
               </div>
 

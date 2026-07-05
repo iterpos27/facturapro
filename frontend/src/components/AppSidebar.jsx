@@ -118,6 +118,7 @@ export default function AppSidebar({
               {permissions.categories && navLink('/categorias', cilFolder,  'Categorías')}
               {permissions.inventory  && navLink('/inventario', cilList,    'Inventario')}
               {permissions.purchases  && navLink('/compras',    cilBasket,  'Compras')}
+              {permissions.purchases  && navLink('/cuentas-pagar', cilFile,  'CxP y Pagos')}
             </>
           ))}
 

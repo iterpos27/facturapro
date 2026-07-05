@@ -26,6 +26,7 @@ const phases = [
   { name: 'Phase 15 — SRI complementarios', file: './migrate_phase15_sri_complementary' },
   { name: 'Phase 16 — Gestiones de cobranza', file: './migrate_phase16_credit_collections' },
   { name: 'Phase 17 - Historial de emails SRI', file: './migrate_phase17_email_history' },
+  { name: 'Phase 18 - Cuentas por pagar', file: './migrate_phase18_payables' },
 ];
 
 async function runAll() {

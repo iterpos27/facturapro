@@ -9,6 +9,7 @@ const ProductManager     = lazy(() => import('../modules/inventory/products/Prod
 const CategoryManager    = lazy(() => import('../modules/inventory/categories/CategoryManager'));
 const InventoryManager   = lazy(() => import('../modules/inventory/stock/InventoryManager'));
 const PurchaseManager    = lazy(() => import('../modules/inventory/purchases/PurchaseManager'));
+const PayablesManager    = lazy(() => import('../modules/inventory/payables/PayablesManager'));
 const ProformaManager    = lazy(() => import('../modules/documents/proformas/ProformaManager'));
 const InvoiceManager     = lazy(() => import('../modules/documents/invoices/InvoiceManager'));
 const ReceivablesManager = lazy(() => import('../modules/documents/receivables/ReceivablesManager'));
@@ -58,6 +59,7 @@ export default function AppContent({ permissions, currentUser, onNavigate }) {
         <Route path="/categorias"  element={permissions.categories ? <CategoryManager /> : <AccessDenied onBack={() => onNavigate('/')} />} />
         <Route path="/inventario"  element={permissions.inventory  ? <InventoryManager />: <AccessDenied onBack={() => onNavigate('/')} />} />
         <Route path="/compras"     element={permissions.purchases  ? <PurchaseManager /> : <AccessDenied onBack={() => onNavigate('/')} />} />
+        <Route path="/cuentas-pagar" element={permissions.purchases ? <PayablesManager /> : <AccessDenied onBack={() => onNavigate('/')} />} />
 
         {/* Documentos */}
         <Route path="/proformas"       element={permissions.proformas    ? <ProformaManager onInvoiceProforma={() => onNavigate('/facturas')} /> : <AccessDenied onBack={() => onNavigate('/')} />} />

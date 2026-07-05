@@ -78,6 +78,9 @@ const schemas = {
     valor_iva: Joi_money.required(),
     total: Joi_money.required(),
     observacion: Joi_str(500).optional().allow(''),
+    tipo_pago: Joi.string().valid('CONTADO', 'CREDITO').optional(),
+    dias_credito: Joi.number().integer().min(0).max(365).optional(),
+    monto_pagado: Joi_money.optional(),
     items: Joi.array().items(itemSchema).min(1).required(),
   }),
 
