@@ -6,6 +6,14 @@ import { printDocument } from '../../../lib/printDocument';
 const money = (value) => (parseFloat(value || 0) || 0).toFixed(2);
 const qty = (value) => (parseFloat(value || 0) || 0).toFixed(2);
 
+const getSriBadgeClass = (estado) => {
+  const value = String(estado || 'PENDIENTE').toUpperCase();
+  if (value === 'AUTORIZADO') return 'bg-success';
+  if (value === 'NO_AUTORIZADO' || value === 'DEVUELTO') return 'bg-danger';
+  if (value === 'FIRMADO' || value === 'RECIBIDO' || value === 'GENERADO') return 'bg-warning text-dark';
+  return 'bg-secondary';
+};
+
 function resolveAssetUrl(value) {
   const url = String(value || '').trim();
   if (!url) return '';
@@ -185,6 +193,43 @@ export default function CreditNotesManager() {
       fetchInvoices();
     } catch (error) {
       showAlert(error.message, 'error');
+    }
+  };
+
+  const handleGenerateSriXml = async (nc) => {
+    try {
+      const response = await apiFetch(`/api/sri/credit-notes/${nc.id_nota_credito}/generate-test-xml`, {
+        method: 'POST',
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'No se pudo generar el XML SRI.');
+      await Swal.fire({
+        icon: 'success',
+        title: 'XML SRI generado',
+        html: `<div class="text-start"><strong>Estado:</strong> ${data.estado}<br/><strong>Clave:</strong><br/><small>${data.clave_acceso}</small></div>`,
+      });
+      fetchCreditNotes();
+    } catch (error) {
+      Swal.fire('SRI Pruebas', error.message, 'error');
+    }
+  };
+
+  const handleProcessSri = async (nc) => {
+    try {
+      const response = await apiFetch(`/api/sri/credit-notes/${nc.id_nota_credito}/process-test`, {
+        method: 'POST',
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'No se pudo procesar la nota de credito en SRI.');
+      const messages = (data.mensajes || []).map((msg) => `<li>${msg.mensaje || msg.informacionAdicional || JSON.stringify(msg)}</li>`).join('');
+      await Swal.fire({
+        icon: data.estado === 'AUTORIZADO' ? 'success' : 'info',
+        title: 'SRI Pruebas',
+        html: `<div class="text-start"><strong>Estado:</strong> ${data.estado}<br/><strong>Ambiente:</strong> ${data.ambiente}<br/><strong>Clave:</strong><br/><small>${data.clave_acceso}</small>${messages ? `<ul class="mt-2">${messages}</ul>` : ''}</div>`,
+      });
+      fetchCreditNotes();
+    } catch (error) {
+      Swal.fire('SRI Pruebas', error.message, 'error');
     }
   };
 
@@ -478,7 +523,8 @@ export default function CreditNotesManager() {
                       <th>Cliente</th>
                       <th>Fecha Emisión</th>
                       <th className="text-end">Monto Devuelto</th>
-                      <th style={{ width: '130px' }}>Acciones</th>
+                      <th>SRI</th>
+                      <th style={{ width: '260px' }}>Acciones</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -493,6 +539,11 @@ export default function CreditNotesManager() {
                         <td>{new Date(nc.fecha_emision).toLocaleString()}</td>
                         <td className="text-end fw-bold text-success">${parseFloat(nc.total).toFixed(2)}</td>
                         <td>
+                          <span className={`badge ${getSriBadgeClass(nc.sri_estado)}`}>
+                            {nc.sri_estado || 'PENDIENTE'}
+                          </span>
+                        </td>
+                        <td>
                           <button
                             className="btn btn-info text-white"
                             style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}
@@ -500,6 +551,22 @@ export default function CreditNotesManager() {
                           >
                             Ver Detalle
                           </button>
+                          <button
+                            className="btn btn-warning ms-1"
+                            style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}
+                            onClick={() => handleGenerateSriXml(nc)}
+                          >
+                            XML SRI
+                          </button>
+                          {nc.estado !== 'ANULADA' && nc.sri_estado !== 'AUTORIZADO' && (
+                            <button
+                              className="btn btn-success ms-1"
+                              style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}
+                              onClick={() => handleProcessSri(nc)}
+                            >
+                              Procesar SRI
+                            </button>
+                          )}
                           {nc.estado !== 'ANULADA' && (
                             <button
                               className="btn btn-danger ms-1"
@@ -522,8 +589,8 @@ export default function CreditNotesManager() {
                   <div key={nc.id_nota_credito} className="client-mobile-card">
                     <div className="client-card-header">
                       <span className="client-name">{nc.numero_nota_credito}</span>
-                      <span className="badge bg-success" style={{ fontWeight: 'bold' }}>
-                        EMITIDA
+                      <span className={`badge ${getSriBadgeClass(nc.sri_estado)}`} style={{ fontWeight: 'bold' }}>
+                        {nc.sri_estado || 'PENDIENTE'}
                       </span>
                     </div>
                     <div className="client-card-body">
@@ -544,6 +611,14 @@ export default function CreditNotesManager() {
                       <button className="btn btn-info text-white" onClick={() => handleFetchNcDetail(nc.id_nota_credito)}>
                         Ver Detalle
                       </button>
+                      <button className="btn btn-warning" onClick={() => handleGenerateSriXml(nc)}>
+                        XML SRI
+                      </button>
+                      {nc.estado !== 'ANULADA' && nc.sri_estado !== 'AUTORIZADO' && (
+                        <button className="btn btn-success" onClick={() => handleProcessSri(nc)}>
+                          Procesar SRI
+                        </button>
+                      )}
                       {nc.estado !== 'ANULADA' && (
                         <button className="btn btn-danger" onClick={() => handleCancelNc(nc)}>
                           Anular

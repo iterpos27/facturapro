@@ -240,6 +240,194 @@ function buildFacturaXml({ invoice, details = [], payments = [], company, ambien
   return { xml, claveAcceso, ambienteCode };
 }
 
+function buildNotaCreditoXml({ creditNote, details = [], company, ambiente = 'PRUEBAS' }) {
+  const serie = parseSerie(creditNote.numero_nota_credito);
+  const ambienteCode = getAmbienteCode(ambiente);
+  const tipoEmision = normalizeText(company.tipo_emision).toUpperCase() === 'INDISPONIBILIDAD' ? '2' : '1';
+  const ruc = normalizeText(company.ruc);
+  if (!/^\d{13}$/.test(ruc)) {
+    throw new Error('Configure un RUC de empresa valido para generar XML SRI.');
+  }
+
+  const claveActual = normalizeText(creditNote.clave_acceso);
+  const claveAcceso = claveAccesoPerteneceAlRuc(claveActual, ruc) ? claveActual : generarClaveAccesoSRI({
+    fechaEmision: creditNote.fecha_emision || new Date(),
+    tipoComprobante: '04',
+    ruc,
+    ambiente: ambienteCode,
+    establecimiento: serie.estab,
+    puntoEmision: serie.ptoEmi,
+    secuencial: serie.secuencial,
+  });
+
+  const subtotalIvaCero = parseFloat(creditNote.subtotal_iva_cero || 0);
+  const subtotalConIva = parseFloat(creditNote.subtotal_con_iva || 0);
+  const valorIva = parseFloat(creditNote.valor_iva || 0);
+  const totalSinImpuestos = subtotalIvaCero + subtotalConIva;
+  const total = parseFloat(creditNote.total || 0);
+  const ivaPercent = details.find((detail) => parseFloat(detail.porcentaje_iva || 0) > 0)?.porcentaje_iva || 15;
+
+  const totalImpuestos = [];
+  if (subtotalIvaCero > 0) {
+    totalImpuestos.push(`
+      <totalImpuesto>
+        <codigo>2</codigo>
+        <codigoPorcentaje>0</codigoPorcentaje>
+        <baseImponible>${money(subtotalIvaCero)}</baseImponible>
+        <valor>0.00</valor>
+      </totalImpuesto>`);
+  }
+  if (subtotalConIva > 0 || valorIva > 0) {
+    totalImpuestos.push(`
+      <totalImpuesto>
+        <codigo>2</codigo>
+        <codigoPorcentaje>${getCodigoPorcentajeIva(ivaPercent)}</codigoPorcentaje>
+        <baseImponible>${money(subtotalConIva)}</baseImponible>
+        <valor>${money(valorIva)}</valor>
+      </totalImpuesto>`);
+  }
+
+  const detallesXml = details.map((detail) => {
+    const iva = parseFloat(detail.porcentaje_iva || 0);
+    const base = parseFloat(detail.precio_total || 0);
+    const valor = parseFloat(detail.valor_iva || 0);
+    return `
+    <detalle>
+      <codigoInterno>${escapeXml(detail.producto_codigo || detail.id_producto)}</codigoInterno>
+      <descripcion>${escapeXml(detail.producto_nombre)}</descripcion>
+      <cantidad>${quantity(detail.cantidad)}</cantidad>
+      <precioUnitario>${money(detail.precio_unitario)}</precioUnitario>
+      <descuento>0.00</descuento>
+      <precioTotalSinImpuesto>${money(base)}</precioTotalSinImpuesto>
+      <impuestos>
+        <impuesto>
+          <codigo>2</codigo>
+          <codigoPorcentaje>${getCodigoPorcentajeIva(iva)}</codigoPorcentaje>
+          <tarifa>${money(iva)}</tarifa>
+          <baseImponible>${money(base)}</baseImponible>
+          <valor>${money(valor)}</valor>
+        </impuesto>
+      </impuestos>
+    </detalle>`;
+  }).join('');
+
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<notaCredito id="comprobante" version="1.1.0">
+  <infoTributaria>
+    <ambiente>${ambienteCode}</ambiente>
+    <tipoEmision>${tipoEmision}</tipoEmision>
+    <razonSocial>${escapeXml(company.razon_social)}</razonSocial>
+    <nombreComercial>${escapeXml(company.nombre_comercial || company.razon_social)}</nombreComercial>
+    <ruc>${escapeXml(ruc)}</ruc>
+    <claveAcceso>${escapeXml(claveAcceso)}</claveAcceso>
+    <codDoc>04</codDoc>
+    <estab>${escapeXml(serie.estab)}</estab>
+    <ptoEmi>${escapeXml(serie.ptoEmi)}</ptoEmi>
+    <secuencial>${escapeXml(serie.secuencial)}</secuencial>
+    <dirMatriz>${escapeXml(company.direccion_matriz)}</dirMatriz>
+  </infoTributaria>
+  <infoNotaCredito>
+    <fechaEmision>${formatSriDate(creditNote.fecha_emision)}</fechaEmision>
+    <dirEstablecimiento>${escapeXml(creditNote.sucursal_direccion || company.direccion_matriz)}</dirEstablecimiento>
+    <tipoIdentificacionComprador>${getTipoIdentificacion(creditNote.cliente_identificacion)}</tipoIdentificacionComprador>
+    <razonSocialComprador>${escapeXml(creditNote.cliente_nombre)}</razonSocialComprador>
+    <identificacionComprador>${escapeXml(creditNote.cliente_identificacion)}</identificacionComprador>
+    <obligadoContabilidad>${company.obligado_contabilidad ? 'SI' : 'NO'}</obligadoContabilidad>
+    <codDocModificado>01</codDocModificado>
+    <numDocModificado>${escapeXml(creditNote.numero_factura)}</numDocModificado>
+    <fechaEmisionDocSustento>${formatSriDate(creditNote.factura_fecha)}</fechaEmisionDocSustento>
+    <totalSinImpuestos>${money(totalSinImpuestos)}</totalSinImpuestos>
+    <valorModificacion>${money(total)}</valorModificacion>
+    <moneda>DOLAR</moneda>
+    <totalConImpuestos>${totalImpuestos.join('')}
+    </totalConImpuestos>
+    <motivo>${escapeXml(creditNote.motivo || 'DEVOLUCION')}</motivo>
+  </infoNotaCredito>
+  <detalles>${detallesXml}
+  </detalles>
+  <infoAdicional>
+    <campoAdicional nombre="Email">${escapeXml(creditNote.cliente_email || 'SIN EMAIL')}</campoAdicional>
+    <campoAdicional nombre="Telefono">${escapeXml(creditNote.cliente_telefono || 'SIN TELEFONO')}</campoAdicional>
+  </infoAdicional>
+</notaCredito>`;
+
+  return { xml, claveAcceso, ambienteCode };
+}
+
+function buildRetencionXml({ withholding, details = [], company, ambiente = 'PRUEBAS' }) {
+  const serie = parseSerie(withholding.numero_retencion);
+  const ambienteCode = getAmbienteCode(ambiente);
+  const tipoEmision = normalizeText(company.tipo_emision).toUpperCase() === 'INDISPONIBILIDAD' ? '2' : '1';
+  const ruc = normalizeText(company.ruc);
+  if (!/^\d{13}$/.test(ruc)) {
+    throw new Error('Configure un RUC de empresa valido para generar XML SRI.');
+  }
+
+  const claveActual = normalizeText(withholding.clave_acceso);
+  const claveAcceso = claveAccesoPerteneceAlRuc(claveActual, ruc) ? claveActual : generarClaveAccesoSRI({
+    fechaEmision: withholding.fecha_emision || new Date(),
+    tipoComprobante: '07',
+    ruc,
+    ambiente: ambienteCode,
+    establecimiento: serie.estab,
+    puntoEmision: serie.ptoEmi,
+    secuencial: serie.secuencial,
+  });
+
+  const normalizeSupportNumber = (value) => {
+    const digits = normalizeText(value).replace(/\D/g, '');
+    return digits || normalizeText(value);
+  };
+  const periodDate = withholding.fecha_compra || withholding.fecha_emision || new Date();
+  const dateObj = new Date(periodDate);
+  const periodoFiscal = `${String(dateObj.getMonth() + 1).padStart(2, '0')}/${dateObj.getFullYear()}`;
+
+  const impuestosXml = details.map((detail) => {
+    const isIva = normalizeText(detail.impuesto).toUpperCase().includes('IVA');
+    return `
+    <impuesto>
+      <codigo>${isIva ? '2' : '1'}</codigo>
+      <codigoRetencion>${escapeXml(detail.codigo_sri)}</codigoRetencion>
+      <baseImponible>${money(detail.base_imponible)}</baseImponible>
+      <porcentajeRetener>${money(detail.porcentaje)}</porcentajeRetener>
+      <valorRetenido>${money(detail.valor_retenido)}</valorRetenido>
+      <codDocSustento>01</codDocSustento>
+      <numDocSustento>${escapeXml(normalizeSupportNumber(withholding.numero_factura_compra))}</numDocSustento>
+      <fechaEmisionDocSustento>${formatSriDate(withholding.fecha_compra)}</fechaEmisionDocSustento>
+    </impuesto>`;
+  }).join('');
+
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<comprobanteRetencion id="comprobante" version="1.0.0">
+  <infoTributaria>
+    <ambiente>${ambienteCode}</ambiente>
+    <tipoEmision>${tipoEmision}</tipoEmision>
+    <razonSocial>${escapeXml(company.razon_social)}</razonSocial>
+    <nombreComercial>${escapeXml(company.nombre_comercial || company.razon_social)}</nombreComercial>
+    <ruc>${escapeXml(ruc)}</ruc>
+    <claveAcceso>${escapeXml(claveAcceso)}</claveAcceso>
+    <codDoc>07</codDoc>
+    <estab>${escapeXml(serie.estab)}</estab>
+    <ptoEmi>${escapeXml(serie.ptoEmi)}</ptoEmi>
+    <secuencial>${escapeXml(serie.secuencial)}</secuencial>
+    <dirMatriz>${escapeXml(company.direccion_matriz)}</dirMatriz>
+  </infoTributaria>
+  <infoCompRetencion>
+    <fechaEmision>${formatSriDate(withholding.fecha_emision)}</fechaEmision>
+    <dirEstablecimiento>${escapeXml(company.direccion_matriz)}</dirEstablecimiento>
+    <obligadoContabilidad>${company.obligado_contabilidad ? 'SI' : 'NO'}</obligadoContabilidad>
+    <tipoIdentificacionSujetoRetenido>${getTipoIdentificacion(withholding.proveedor_identificacion)}</tipoIdentificacionSujetoRetenido>
+    <razonSocialSujetoRetenido>${escapeXml(withholding.proveedor_nombre)}</razonSocialSujetoRetenido>
+    <identificacionSujetoRetenido>${escapeXml(withholding.proveedor_identificacion)}</identificacionSujetoRetenido>
+    <periodoFiscal>${periodoFiscal}</periodoFiscal>
+  </infoCompRetencion>
+  <impuestos>${impuestosXml}
+  </impuestos>
+</comprobanteRetencion>`;
+
+  return { xml, claveAcceso, ambienteCode };
+}
+
 function simularAutorizacionSRI(claveAcceso) {
   return {
     estado: 'AUTORIZADO',
@@ -262,6 +450,8 @@ module.exports = {
   generarClaveAccesoSRI,
   claveAccesoPerteneceAlRuc,
   buildFacturaXml,
+  buildNotaCreditoXml,
+  buildRetencionXml,
   escapeXml,
   simularAutorizacionSRI,
 };

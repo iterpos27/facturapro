@@ -5,6 +5,14 @@ import { printDocument } from '../../../lib/printDocument';
 
 const money = (value) => (parseFloat(value || 0) || 0).toFixed(2);
 
+const getSriBadgeClass = (estado) => {
+  const value = String(estado || 'PENDIENTE').toUpperCase();
+  if (value === 'AUTORIZADO') return 'bg-success';
+  if (value === 'NO_AUTORIZADO' || value === 'DEVUELTO') return 'bg-danger';
+  if (value === 'FIRMADO' || value === 'RECIBIDO' || value === 'GENERADO') return 'bg-warning text-dark';
+  return 'bg-secondary';
+};
+
 function resolveAssetUrl(value) {
   const url = String(value || '').trim();
   if (!url) return '';
@@ -204,6 +212,43 @@ export default function WithholdingsManager() {
       fetchPurchases();
     } catch (error) {
       showAlert(error.message, 'error');
+    }
+  };
+
+  const handleGenerateSriXml = async (withholding) => {
+    try {
+      const response = await apiFetch(`/api/sri/withholdings/${withholding.id_retencion}/generate-test-xml`, {
+        method: 'POST',
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'No se pudo generar el XML SRI.');
+      await Swal.fire({
+        icon: 'success',
+        title: 'XML SRI generado',
+        html: `<div class="text-start"><strong>Estado:</strong> ${data.estado}<br/><strong>Clave:</strong><br/><small>${data.clave_acceso}</small></div>`,
+      });
+      fetchWithholdings();
+    } catch (error) {
+      Swal.fire('SRI Pruebas', error.message, 'error');
+    }
+  };
+
+  const handleProcessSri = async (withholding) => {
+    try {
+      const response = await apiFetch(`/api/sri/withholdings/${withholding.id_retencion}/process-test`, {
+        method: 'POST',
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'No se pudo procesar la retencion en SRI.');
+      const messages = (data.mensajes || []).map((msg) => `<li>${msg.mensaje || msg.informacionAdicional || JSON.stringify(msg)}</li>`).join('');
+      await Swal.fire({
+        icon: data.estado === 'AUTORIZADO' ? 'success' : 'info',
+        title: 'SRI Pruebas',
+        html: `<div class="text-start"><strong>Estado:</strong> ${data.estado}<br/><strong>Ambiente:</strong> ${data.ambiente}<br/><strong>Clave:</strong><br/><small>${data.clave_acceso}</small>${messages ? `<ul class="mt-2">${messages}</ul>` : ''}</div>`,
+      });
+      fetchWithholdings();
+    } catch (error) {
+      Swal.fire('SRI Pruebas', error.message, 'error');
     }
   };
 
@@ -505,7 +550,8 @@ export default function WithholdingsManager() {
                       <th>Factura Compra</th>
                       <th>Proveedor</th>
                       <th>Fecha Emisión</th>
-                      <th style={{ width: '130px' }}>Acciones</th>
+                      <th>SRI</th>
+                      <th style={{ width: '260px' }}>Acciones</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -519,6 +565,11 @@ export default function WithholdingsManager() {
                         </td>
                         <td>{new Date(w.fecha_emision).toLocaleString()}</td>
                         <td>
+                          <span className={`badge ${getSriBadgeClass(w.sri_estado)}`}>
+                            {w.sri_estado || 'PENDIENTE'}
+                          </span>
+                        </td>
+                        <td>
                           <button
                             className="btn btn-info text-white"
                             style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}
@@ -526,6 +577,22 @@ export default function WithholdingsManager() {
                           >
                             Ver Detalle
                           </button>
+                          <button
+                            className="btn btn-warning ms-1"
+                            style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}
+                            onClick={() => handleGenerateSriXml(w)}
+                          >
+                            XML SRI
+                          </button>
+                          {w.estado !== 'ANULADA' && w.sri_estado !== 'AUTORIZADO' && (
+                            <button
+                              className="btn btn-success ms-1"
+                              style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}
+                              onClick={() => handleProcessSri(w)}
+                            >
+                              Procesar SRI
+                            </button>
+                          )}
                           {w.estado !== 'ANULADA' && (
                             <button
                               className="btn btn-danger ms-1"
@@ -548,8 +615,8 @@ export default function WithholdingsManager() {
                   <div key={w.id_retencion} className="client-mobile-card">
                     <div className="client-card-header">
                       <span className="client-name">{w.numero_retencion}</span>
-                      <span className="badge bg-success" style={{ fontWeight: 'bold' }}>
-                        EMITIDA
+                      <span className={`badge ${getSriBadgeClass(w.sri_estado)}`} style={{ fontWeight: 'bold' }}>
+                        {w.sri_estado || 'PENDIENTE'}
                       </span>
                     </div>
                     <div className="client-card-body">
@@ -570,6 +637,14 @@ export default function WithholdingsManager() {
                       <button className="btn btn-info text-white" onClick={() => handleFetchRetDetail(w.id_retencion)}>
                         Ver Detalle
                       </button>
+                      <button className="btn btn-warning" onClick={() => handleGenerateSriXml(w)}>
+                        XML SRI
+                      </button>
+                      {w.estado !== 'ANULADA' && w.sri_estado !== 'AUTORIZADO' && (
+                        <button className="btn btn-success" onClick={() => handleProcessSri(w)}>
+                          Procesar SRI
+                        </button>
+                      )}
                       {w.estado !== 'ANULADA' && (
                         <button className="btn btn-danger" onClick={() => handleCancelWithholding(w)}>
                           Anular

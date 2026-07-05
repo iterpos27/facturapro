@@ -2,7 +2,12 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 const { writeAudit } = require('../audit');
-const { buildFacturaXml, claveAccesoPerteneceAlRuc } = require('../sri_utils');
+const {
+  buildFacturaXml,
+  buildNotaCreditoXml,
+  buildRetencionXml,
+  claveAccesoPerteneceAlRuc,
+} = require('../sri_utils');
 const {
   getSriEndpoints,
   validateCertificateConfig,
@@ -65,6 +70,69 @@ async function loadInvoiceForSri(client, idFactura) {
     invoice: invoiceRes.rows[0],
     details: detailsRes.rows,
     payments: paymentsRes.rows,
+  };
+}
+
+async function loadCreditNoteForSri(client, idNotaCredito) {
+  const creditNoteRes = await client.query(`
+    SELECT nc.*, f.numero_factura, f.fecha_emision AS factura_fecha,
+           c.name AS cliente_nombre, c.identification_number AS cliente_identificacion,
+           c.email AS cliente_email, c.phone AS cliente_telefono, c.address AS cliente_direccion,
+           s.direccion AS sucursal_direccion
+    FROM notas_credito nc
+    JOIN facturas f ON nc.id_factura = f.id_factura
+    JOIN clients c ON f.id_cliente = c.id
+    LEFT JOIN sucursales s ON f.id_sucursal = s.id_sucursal
+    WHERE nc.id_nota_credito = $1
+  `, [idNotaCredito]);
+
+  if (creditNoteRes.rows.length === 0) {
+    throw new Error('Nota de credito no encontrada.');
+  }
+
+  const creditNote = creditNoteRes.rows[0];
+  const detailsRes = await client.query(`
+    SELECT ncd.*, p.nombre AS producto_nombre, p.codigo AS producto_codigo,
+           COALESCE(fd.porcentaje_iva, 0) AS porcentaje_iva
+    FROM nota_credito_detalles ncd
+    JOIN productos p ON ncd.id_producto = p.id_producto
+    JOIN notas_credito nc ON ncd.id_nota_credito = nc.id_nota_credito
+    LEFT JOIN factura_detalles fd ON fd.id_factura = nc.id_factura AND fd.id_producto = ncd.id_producto
+    WHERE ncd.id_nota_credito = $1
+    ORDER BY ncd.id_detalle ASC
+  `, [idNotaCredito]);
+
+  return {
+    document: creditNote,
+    details: detailsRes.rows,
+  };
+}
+
+async function loadWithholdingForSri(client, idRetencion) {
+  const withholdingRes = await client.query(`
+    SELECT r.*, c.numero_factura_compra, c.fecha_compra,
+           p.nombre AS proveedor_nombre, p.identificacion AS proveedor_identificacion,
+           p.email AS proveedor_email, p.telefono AS proveedor_telefono, p.direccion AS proveedor_direccion
+    FROM retenciones r
+    JOIN compras c ON r.id_compra = c.id_compra
+    JOIN proveedores p ON c.id_proveedor = p.id_proveedor
+    WHERE r.id_retencion = $1
+  `, [idRetencion]);
+
+  if (withholdingRes.rows.length === 0) {
+    throw new Error('Retencion no encontrada.');
+  }
+
+  const detailsRes = await client.query(`
+    SELECT *
+    FROM retencion_detalles
+    WHERE id_retencion = $1
+    ORDER BY id_detalle ASC
+  `, [idRetencion]);
+
+  return {
+    document: withholdingRes.rows[0],
+    details: detailsRes.rows,
   };
 }
 
@@ -142,6 +210,278 @@ async function ensureGeneratedInvoiceXml(client, idFactura, company) {
   `, [invoice.id_factura, claveAcceso, xml, ambiente]);
 
   return upsertRes.rows[0];
+}
+
+const sriDocumentTypes = {
+  creditNote: {
+    tipo: '04',
+    table: 'notas_credito',
+    pk: 'id_nota_credito',
+    numberField: 'numero_nota_credito',
+    auditEntity: 'notas_credito',
+    label: 'nota de credito',
+    load: loadCreditNoteForSri,
+    build: ({ document, details, company, ambiente }) => buildNotaCreditoXml({
+      creditNote: document,
+      details,
+      company,
+      ambiente,
+    }),
+  },
+  withholding: {
+    tipo: '07',
+    table: 'retenciones',
+    pk: 'id_retencion',
+    numberField: 'numero_retencion',
+    auditEntity: 'retenciones',
+    label: 'retencion',
+    load: loadWithholdingForSri,
+    build: ({ document, details, company, ambiente }) => buildRetencionXml({
+      withholding: document,
+      details,
+      company,
+      ambiente,
+    }),
+  },
+};
+
+function documentConfigOrFail(kind) {
+  const config = sriDocumentTypes[kind];
+  if (!config) {
+    throw new Error('Tipo de documento SRI no soportado.');
+  }
+  return config;
+}
+
+async function updateComplementaryDocumentSri(client, config, idDocumento, patch) {
+  await client.query(`
+    UPDATE ${config.table}
+    SET clave_acceso = COALESCE($2, clave_acceso),
+        xml_generado = COALESCE($3, xml_generado),
+        sri_estado = COALESCE($4, sri_estado),
+        sri_ambiente = COALESCE($5, sri_ambiente),
+        sri_numero_autorizacion = $6,
+        sri_fecha_autorizacion = NULLIF($7, '')::timestamp,
+        sri_mensajes = COALESCE($8::jsonb, sri_mensajes)
+    WHERE ${config.pk} = $1
+  `, [
+    idDocumento,
+    patch.clave_acceso || null,
+    patch.xml_generado || null,
+    patch.sri_estado || null,
+    patch.sri_ambiente || null,
+    patch.sri_numero_autorizacion || null,
+    patch.sri_fecha_autorizacion || '',
+    patch.sri_mensajes ? JSON.stringify(patch.sri_mensajes) : null,
+  ]);
+}
+
+async function ensureGeneratedComplementaryXml(client, kind, idDocumento, company) {
+  const config = documentConfigOrFail(kind);
+  const sriRes = await client.query(`
+    SELECT *
+    FROM sri_comprobantes
+    WHERE tipo_comprobante = $1 AND id_documento = $2
+  `, [config.tipo, idDocumento]);
+
+  const { document, details } = await config.load(client, idDocumento);
+  if (document.estado === 'ANULADA') {
+    throw new Error(`No se puede procesar SRI para una ${config.label} anulada.`);
+  }
+  if (details.length === 0) {
+    throw new Error(`La ${config.label} no tiene detalles para generar XML SRI.`);
+  }
+
+  const existingSri = sriRes.rows[0];
+  if (existingSri?.estado === 'AUTORIZADO') {
+    return existingSri;
+  }
+  if (sriRecordMatchesCompany(existingSri, company)) {
+    return existingSri;
+  }
+
+  const ambiente = 'PRUEBAS';
+  const { xml, claveAcceso } = config.build({
+    document,
+    details,
+    company,
+    ambiente,
+  });
+
+  const upsertRes = await client.query(`
+    INSERT INTO sri_comprobantes (
+      tipo_comprobante, id_documento, numero_comprobante, clave_acceso,
+      ambiente, estado, xml_generado, mensajes
+    )
+    VALUES ($1, $2, $3, $4, $5, 'GENERADO', $6, '[]'::jsonb)
+    ON CONFLICT (tipo_comprobante, id_documento)
+    DO UPDATE SET
+      numero_comprobante = EXCLUDED.numero_comprobante,
+      clave_acceso = EXCLUDED.clave_acceso,
+      ambiente = EXCLUDED.ambiente,
+      estado = 'GENERADO',
+      xml_generado = EXCLUDED.xml_generado,
+      xml_firmado = NULL,
+      numero_autorizacion = NULL,
+      fecha_autorizacion = NULL,
+      mensajes = '[]'::jsonb,
+      updated_at = CURRENT_TIMESTAMP
+    RETURNING *
+  `, [config.tipo, document[config.pk], document[config.numberField], claveAcceso, ambiente, xml]);
+
+  await updateComplementaryDocumentSri(client, config, document[config.pk], {
+    clave_acceso: claveAcceso,
+    xml_generado: xml,
+    sri_estado: 'GENERADO',
+    sri_ambiente: ambiente,
+    sri_numero_autorizacion: null,
+    sri_fecha_autorizacion: '',
+    sri_mensajes: [],
+  });
+
+  return upsertRes.rows[0];
+}
+
+async function generateComplementaryXmlHandler(req, res, kind) {
+  const client = await db.pool.connect();
+  const config = documentConfigOrFail(kind);
+  try {
+    await client.query('BEGIN');
+    const company = await loadCompany(client);
+    const sri = await ensureGeneratedComplementaryXml(client, kind, req.params.id, company);
+
+    await writeAudit(client, {
+      entity: config.auditEntity,
+      entityId: sri.id_documento,
+      action: 'GENERAR_XML_SRI_PRUEBAS',
+      userId: getCurrentUserId(req),
+      detail: {
+        numero_comprobante: sri.numero_comprobante,
+        clave_acceso: sri.clave_acceso,
+        ambiente: sri.ambiente,
+      },
+    });
+
+    await client.query('COMMIT');
+    res.json({
+      estado: sri.estado,
+      ambiente: sri.ambiente,
+      clave_acceso: sri.clave_acceso,
+      xml: sri.xml_generado,
+      sri,
+    });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Error al generar XML SRI pruebas:', error);
+    res.status(400).json({ error: error.message || 'Error al generar XML SRI en pruebas.' });
+  } finally {
+    client.release();
+  }
+}
+
+async function processComplementarySriHandler(req, res, kind) {
+  const client = await db.pool.connect();
+  const config = documentConfigOrFail(kind);
+  try {
+    await client.query('BEGIN');
+
+    const company = await loadCompany(client);
+    let sri = await ensureGeneratedComplementaryXml(client, kind, req.params.id, company);
+    let signedXml = sri.xml_firmado;
+    if (!signedXml) {
+      signedXml = await signXmlWithCertificate(sri.xml_generado, company);
+      const signedRes = await client.query(`
+        UPDATE sri_comprobantes
+        SET estado = 'FIRMADO',
+            xml_firmado = $2,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id_sri = $1
+        RETURNING *
+      `, [sri.id_sri, signedXml]);
+      sri = signedRes.rows[0];
+      await updateComplementaryDocumentSri(client, config, sri.id_documento, {
+        sri_estado: 'FIRMADO',
+        sri_mensajes: [],
+      });
+    }
+
+    const reception = await sendReceipt(signedXml, company, sri.ambiente);
+    const receptionState = reception.estado === 'RECIBIDA' ? 'RECIBIDO' : 'DEVUELTO';
+    if (receptionState !== 'RECIBIDO') {
+      const messages = reception.mensajes || [];
+      const updated = await client.query(`
+        UPDATE sri_comprobantes
+        SET estado = 'DEVUELTO',
+            mensajes = $2::jsonb,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id_sri = $1
+        RETURNING *
+      `, [sri.id_sri, JSON.stringify(messages)]);
+      await updateComplementaryDocumentSri(client, config, sri.id_documento, {
+        sri_estado: 'DEVUELTO',
+        sri_mensajes: messages,
+      });
+      await client.query('COMMIT');
+      return res.json({
+        estado: 'DEVUELTO',
+        ambiente: sri.ambiente,
+        clave_acceso: sri.clave_acceso,
+        mensajes: messages,
+        sri: updated.rows[0],
+      });
+    }
+
+    const authorization = await authorizeReceipt(sri.clave_acceso, company, sri.ambiente);
+    const finalState = authorization.estado === 'AUTORIZADO' ? 'AUTORIZADO' : 'NO_AUTORIZADO';
+    const messages = authorization.mensajes || [];
+    const updated = await client.query(`
+      UPDATE sri_comprobantes
+      SET estado = $2,
+          numero_autorizacion = $3,
+          fecha_autorizacion = NULLIF($4, '')::timestamp,
+          mensajes = $5::jsonb,
+          updated_at = CURRENT_TIMESTAMP
+      WHERE id_sri = $1
+      RETURNING *
+    `, [sri.id_sri, finalState, authorization.numeroAutorizacion || null, authorization.fechaAutorizacion || '', JSON.stringify(messages)]);
+
+    await updateComplementaryDocumentSri(client, config, sri.id_documento, {
+      sri_estado: finalState,
+      sri_numero_autorizacion: authorization.numeroAutorizacion || null,
+      sri_fecha_autorizacion: authorization.fechaAutorizacion || '',
+      sri_mensajes: messages,
+    });
+
+    await writeAudit(client, {
+      entity: config.auditEntity,
+      entityId: sri.id_documento,
+      action: 'PROCESAR_SRI_PRUEBAS',
+      userId: getCurrentUserId(req),
+      detail: {
+        clave_acceso: sri.clave_acceso,
+        recepcion: reception.estado,
+        autorizacion: finalState,
+        mensajes: messages,
+      },
+    });
+
+    await client.query('COMMIT');
+    return res.json({
+      estado: finalState,
+      ambiente: sri.ambiente,
+      clave_acceso: sri.clave_acceso,
+      numero_autorizacion: authorization.numeroAutorizacion || null,
+      fecha_autorizacion: authorization.fechaAutorizacion || null,
+      mensajes: messages,
+      sri: updated.rows[0],
+    });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Error al procesar SRI pruebas:', error);
+    return res.status(400).json({ error: error.message || 'Error al procesar SRI en pruebas.' });
+  } finally {
+    client.release();
+  }
 }
 
 router.get('/invoices/:id/status', async (req, res) => {
@@ -575,5 +915,51 @@ router.post('/invoices/:id/process-test', async (req, res) => {
     client.release();
   }
 });
+
+router.get('/credit-notes/:id/status', async (req, res) => {
+  try {
+    const result = await db.query(`
+      SELECT *
+      FROM sri_comprobantes
+      WHERE tipo_comprobante = '04' AND id_documento = $1
+    `, [req.params.id]);
+
+    res.json(result.rows[0] || null);
+  } catch (error) {
+    console.error('Error al consultar estado SRI de nota de credito:', error);
+    res.status(500).json({ error: 'Error al consultar el estado SRI.' });
+  }
+});
+
+router.post('/credit-notes/:id/generate-test-xml', (req, res) => (
+  generateComplementaryXmlHandler(req, res, 'creditNote')
+));
+
+router.post('/credit-notes/:id/process-test', (req, res) => (
+  processComplementarySriHandler(req, res, 'creditNote')
+));
+
+router.get('/withholdings/:id/status', async (req, res) => {
+  try {
+    const result = await db.query(`
+      SELECT *
+      FROM sri_comprobantes
+      WHERE tipo_comprobante = '07' AND id_documento = $1
+    `, [req.params.id]);
+
+    res.json(result.rows[0] || null);
+  } catch (error) {
+    console.error('Error al consultar estado SRI de retencion:', error);
+    res.status(500).json({ error: 'Error al consultar el estado SRI.' });
+  }
+});
+
+router.post('/withholdings/:id/generate-test-xml', (req, res) => (
+  generateComplementaryXmlHandler(req, res, 'withholding')
+));
+
+router.post('/withholdings/:id/process-test', (req, res) => (
+  processComplementarySriHandler(req, res, 'withholding')
+));
 
 module.exports = router;
