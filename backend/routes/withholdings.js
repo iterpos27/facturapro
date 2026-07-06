@@ -3,7 +3,7 @@ const router = express.Router();
 const db = require('../db');
 const { writeAudit } = require('../audit');
 const { generarClaveAccesoSRI } = require('../sri_utils');
-const { authenticateToken } = require('./auth');
+const { authenticateToken, authorizePermissions } = require('./auth');
 const { validate, schemas } = require('../middleware/validate');
 const { formatDocumentNumber, getDefaultBranch, nextDocumentSequential } = require('../sequential_service');
 
@@ -168,7 +168,7 @@ router.post('/', async (req, res) => {
   }
 });
 
-router.put('/:id/cancel', async (req, res) => {
+router.put('/:id/cancel', authorizePermissions('DOCUMENT_CANCEL'), async (req, res) => {
   const { id } = req.params;
   const { reason } = req.body || {};
   const id_usuario = req.user.id_usuario;

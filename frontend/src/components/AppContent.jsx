@@ -22,6 +22,7 @@ const SequentialsManager = lazy(() => import('../modules/administration/sequenti
 const UserManager        = lazy(() => import('../modules/administration/users/UserManager'));
 const AuditManager       = lazy(() => import('../modules/administration/audit/AuditManager'));
 const ReportsDashboard   = lazy(() => import('../modules/reports/ReportsDashboard'));
+const BanksManager       = lazy(() => import('../modules/administration/banks/BanksManager'));
 
 /** Spinner de carga mientras se descarga el chunk del módulo */
 function ModuleLoader() {
@@ -70,6 +71,7 @@ export default function AppContent({ permissions, currentUser, onNavigate }) {
         <Route path="/reportes"        element={permissions.reports      ? <ReportsDashboard />    : <AccessDenied onBack={() => onNavigate('/')} />} />
 
         {/* Administración / Caja */}
+        <Route path="/bancos"       element={permissions.banks       ? <BanksManager />        : <AccessDenied onBack={() => onNavigate('/')} />} />
         <Route path="/caja"         element={permissions.cash        ? <CashRegisterManager /> : <AccessDenied onBack={() => onNavigate('/')} />} />
         <Route path="/empresa"      element={permissions.company     ? <CompanyManager />      : <AccessDenied onBack={() => onNavigate('/')} />} />
         <Route path="/sucursales"   element={permissions.branches    ? <BranchManager />       : <AccessDenied onBack={() => onNavigate('/')} />} />

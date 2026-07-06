@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
-const { authenticateToken } = require('./auth');
+const { authenticateToken, authorizePermissions } = require('./auth');
 const { writeAudit } = require('../audit');
 
 router.use(authenticateToken);
@@ -183,7 +183,7 @@ router.post('/open', async (req, res) => {
   }
 });
 
-router.post('/close', async (req, res) => {
+router.post('/close', authorizePermissions('CASH_CLOSE'), async (req, res) => {
   const { id_sesion, cierre_billetes, cierre_monedas, monto_cierre } = req.body;
   const bills = toMoney(cierre_billetes);
   const coins = toMoney(cierre_monedas);

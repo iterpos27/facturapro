@@ -15,7 +15,7 @@ const {
   sendReceipt,
   authorizeReceipt,
 } = require('../sri_service');
-const { authenticateToken } = require('./auth');
+const { authenticateToken, authorizePermissions } = require('./auth');
 const { sendAuthorizedDocument } = require('../email_service');
 
 // Proteger todas las rutas de SRI con autenticación y autorización
@@ -1001,7 +1001,7 @@ router.post('/invoices/:id/authorize-test', async (req, res) => {
   }
 });
 
-router.post('/invoices/:id/process-test', async (req, res) => {
+router.post('/invoices/:id/process-test', authorizePermissions('SRI_PROCESS'), async (req, res) => {
   const client = await db.pool.connect();
   try {
     await client.query('BEGIN');
@@ -1132,7 +1132,7 @@ router.post('/credit-notes/:id/generate-test-xml', (req, res) => (
   generateComplementaryXmlHandler(req, res, 'creditNote')
 ));
 
-router.post('/credit-notes/:id/process-test', (req, res) => (
+router.post('/credit-notes/:id/process-test', authorizePermissions('SRI_PROCESS'), (req, res) => (
   processComplementarySriHandler(req, res, 'creditNote')
 ));
 
@@ -1155,7 +1155,7 @@ router.post('/withholdings/:id/generate-test-xml', (req, res) => (
   generateComplementaryXmlHandler(req, res, 'withholding')
 ));
 
-router.post('/withholdings/:id/process-test', (req, res) => (
+router.post('/withholdings/:id/process-test', authorizePermissions('SRI_PROCESS'), (req, res) => (
   processComplementarySriHandler(req, res, 'withholding')
 ));
 

@@ -70,6 +70,7 @@ const withholdingsRoutes = require('./routes/withholdings');
 const auditRoutes = require('./routes/audit');
 const sriRoutes = require('./routes/sri');
 const rideRoutes = require('./routes/rides');
+const bankRoutes = require('./routes/banks');
 
 app.use('/api/auth', authRoutes);
 app.use('/api/clients', authenticateToken, authorizePermissions('CLIENTS_CRUD'), clientRoutes);
@@ -85,6 +86,7 @@ app.use('/api/invoices', authenticateToken, authorizePermissions('INVOICES_CRUD'
 app.use('/api/proformas', authenticateToken, authorizePermissions('PROFORMAS_CRUD'), proformaRoutes);
 app.use('/api/sequentials', authenticateToken, authorizePermissions('SEQUENTIALS_UPDATE'), sequentialRoutes);
 app.use('/api/reports', authenticateToken, authorizePermissions('REPORTS_READ'), reportRoutes);
+app.use('/api/banks', authenticateToken, authorizePermissions('BANKS_CRUD'), bankRoutes);
 app.use('/api/audit', authenticateToken, authorizePermissions('AUDIT_READ'), auditRoutes);
 app.use('/api/sri', authenticateToken, authorizePermissions('SRI_ELECTRONIC_BILLING'), sriRoutes);
 app.use('/api/rides', authenticateToken, authorizePermissions('PROFORMAS_CRUD', 'INVOICES_CRUD', 'CREDIT_NOTES_CRUD', 'WITHHOLDINGS_CRUD'), rideRoutes);

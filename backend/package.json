@@ -28,10 +28,12 @@
     "db:migrate:email-history": "node migrations/migrate_phase17_email_history.js",
     "db:migrate:payables": "node migrations/migrate_phase18_payables.js",
     "db:migrate:inventory-costing": "node migrations/migrate_phase19_inventory_costing.js",
+    "db:migrate:preproduction": "node migrations/migrate_phase20_preproduction.js",
     "db:migrate:all": "node migrations/migrate_all.js",
     "db:backup": "node scripts/backup_database.js",
     "db:restore": "node scripts/restore_database.js",
     "db:restore-check": "node scripts/restore_check.js",
+    "preprod:check": "node scripts/preprod_check.js",
     "db:drop": "node migrations/migrate_drop.js",
     "db:productos": "node migrations/create_productos_table.js"
   },

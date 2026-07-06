@@ -59,6 +59,10 @@ router.get('/summary', async (req, res) => {
       withholdings,
       approximateProfit,
       inventoryValuation,
+      marginByProduct,
+      profitByPeriod,
+      receivablesAging,
+      payablesAging,
       cashSessions,
     ] = await Promise.all([
       db.query(`
@@ -162,6 +166,67 @@ router.get('/summary', async (req, res) => {
         FROM productos
         WHERE activo = true
       `).catch((error) => (error.code === '42703' ? { rows: [{ productos_activos: 0, unidades_stock: 0, valor_inventario: 0, costo_promedio_general: 0 }] } : Promise.reject(error))),
+      db.query(`
+        SELECT p.codigo, p.nombre,
+               COALESCE(SUM(fd.cantidad), 0) AS cantidad,
+               COALESCE(SUM(fd.precio_total + fd.valor_iva - COALESCE(fd.descuento_total, fd.descuento, 0)), 0) AS venta,
+               COALESCE(SUM(COALESCE(p.costo_promedio, p.precio_compra, 0) * fd.cantidad), 0) AS costo,
+               COALESCE(SUM((fd.precio_unitario - COALESCE(p.costo_promedio, p.precio_compra, 0)) * fd.cantidad), 0) AS margen
+        FROM factura_detalles fd
+        JOIN facturas f ON fd.id_factura = f.id_factura
+        JOIN productos p ON fd.id_producto = p.id_producto
+        ${invoiceFilter.clause ? `${invoiceFilter.clause} AND f.estado = 'EMITIDA'` : "WHERE f.estado = 'EMITIDA'"}
+        GROUP BY p.codigo, p.nombre
+        ORDER BY margen DESC
+        LIMIT 20
+      `, invoiceFilter.params),
+      db.query(`
+        SELECT DATE_TRUNC('month', f.fecha_emision)::date AS periodo,
+               COALESCE(SUM(f.total), 0) AS ventas,
+               COALESCE(SUM(fd.cantidad * COALESCE(p.costo_promedio, p.precio_compra, 0)), 0) AS costo,
+               COALESCE(SUM(f.total), 0) - COALESCE(SUM(fd.cantidad * COALESCE(p.costo_promedio, p.precio_compra, 0)), 0) AS utilidad
+        FROM facturas f
+        LEFT JOIN factura_detalles fd ON f.id_factura = fd.id_factura
+        LEFT JOIN productos p ON fd.id_producto = p.id_producto
+        ${invoiceFilter.clause ? `${invoiceFilter.clause} AND f.estado = 'EMITIDA'` : "WHERE f.estado = 'EMITIDA'"}
+        GROUP BY DATE_TRUNC('month', f.fecha_emision)::date
+        ORDER BY periodo DESC
+        LIMIT 12
+      `, invoiceFilter.params),
+      db.query(`
+        SELECT bucket, COUNT(*)::int AS documentos, COALESCE(SUM(saldo), 0) AS saldo
+        FROM (
+          SELECT saldo,
+                 CASE
+                   WHEN fecha_vencimiento IS NULL OR fecha_vencimiento >= CURRENT_DATE THEN 'POR_VENCER'
+                   WHEN CURRENT_DATE - fecha_vencimiento <= 30 THEN '1_30'
+                   WHEN CURRENT_DATE - fecha_vencimiento <= 60 THEN '31_60'
+                   WHEN CURRENT_DATE - fecha_vencimiento <= 90 THEN '61_90'
+                   ELSE 'MAS_90'
+                 END AS bucket
+          FROM facturas
+          WHERE estado = 'EMITIDA' AND COALESCE(saldo, 0) > 0
+        ) aging
+        GROUP BY bucket
+        ORDER BY bucket
+      `),
+      db.query(`
+        SELECT bucket, COUNT(*)::int AS documentos, COALESCE(SUM(saldo), 0) AS saldo
+        FROM (
+          SELECT saldo,
+                 CASE
+                   WHEN fecha_vencimiento IS NULL OR fecha_vencimiento >= CURRENT_DATE THEN 'POR_VENCER'
+                   WHEN CURRENT_DATE - fecha_vencimiento <= 30 THEN '1_30'
+                   WHEN CURRENT_DATE - fecha_vencimiento <= 60 THEN '31_60'
+                   WHEN CURRENT_DATE - fecha_vencimiento <= 90 THEN '61_90'
+                   ELSE 'MAS_90'
+                 END AS bucket
+          FROM compras
+          WHERE estado = 'REGISTRADA' AND COALESCE(saldo, 0) > 0
+        ) aging
+        GROUP BY bucket
+        ORDER BY bucket
+      `).catch((error) => (error.code === '42P01' ? { rows: [] } : Promise.reject(error))),
       (() => {
         const params = [];
         const where = [];
@@ -205,6 +270,10 @@ router.get('/summary', async (req, res) => {
       withholdings: withholdings.rows[0],
       approximateProfit: approximateProfit.rows[0],
       inventory: inventoryValuation.rows[0],
+      marginByProduct: marginByProduct.rows,
+      profitByPeriod: profitByPeriod.rows,
+      receivablesAging: receivablesAging.rows,
+      payablesAging: payablesAging.rows,
       cash: cashSessions.rows[0],
     });
   } catch (error) {

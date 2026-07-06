@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
-const { authenticateToken } = require('./auth');
+const { authenticateToken, authorizePermissions } = require('./auth');
 const { writeAudit } = require('../audit');
 const { generarClaveAccesoSRI } = require('../sri_utils');
 const { validate, schemas } = require('../middleware/validate');
@@ -429,7 +429,7 @@ router.post('/', validate(schemas.createInvoice), async (req, res) => {
   }
 });
 
-router.put('/:id/cancel', async (req, res) => {
+router.put('/:id/cancel', authorizePermissions('DOCUMENT_CANCEL'), async (req, res) => {
   const { id } = req.params;
   const { reason } = req.body;
   const id_usuario = req.user.id_usuario;

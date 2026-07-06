@@ -28,6 +28,7 @@ const phases = [
   { name: 'Phase 17 - Historial de emails SRI', file: './migrate_phase17_email_history' },
   { name: 'Phase 18 - Cuentas por pagar', file: './migrate_phase18_payables' },
   { name: 'Phase 19 - Kardex valorizado y costo promedio', file: './migrate_phase19_inventory_costing' },
+  { name: 'Phase 20 - Preproduccion, bancos y permisos finos', file: './migrate_phase20_preproduction' },
 ];
 
 async function runAll() {

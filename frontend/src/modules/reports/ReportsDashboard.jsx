@@ -99,6 +99,50 @@ function exportToExcel(summary, filters) {
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), 'Proformas');
   }
 
+  if (summary.marginByProduct?.length) {
+    const rows = [
+      ['Codigo', 'Producto', 'Cantidad', 'Venta', 'Costo', 'Margen'],
+      ...summary.marginByProduct.map((r) => [
+        r.codigo,
+        r.nombre,
+        Number(r.cantidad || 0).toFixed(2),
+        Number(r.venta || 0).toFixed(2),
+        Number(r.costo || 0).toFixed(2),
+        Number(r.margen || 0).toFixed(2),
+      ]),
+    ];
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), 'Margen productos');
+  }
+
+  if (summary.profitByPeriod?.length) {
+    const rows = [
+      ['Periodo', 'Ventas', 'Costo', 'Utilidad'],
+      ...summary.profitByPeriod.map((r) => [
+        String(r.periodo).slice(0, 10),
+        Number(r.ventas || 0).toFixed(2),
+        Number(r.costo || 0).toFixed(2),
+        Number(r.utilidad || 0).toFixed(2),
+      ]),
+    ];
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), 'Utilidad periodo');
+  }
+
+  if (summary.receivablesAging?.length) {
+    const rows = [
+      ['Rango', 'Documentos', 'Saldo'],
+      ...summary.receivablesAging.map((r) => [r.bucket, r.documentos, Number(r.saldo || 0).toFixed(2)]),
+    ];
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), 'Aging CxC');
+  }
+
+  if (summary.payablesAging?.length) {
+    const rows = [
+      ['Rango', 'Documentos', 'Saldo'],
+      ...summary.payablesAging.map((r) => [r.bucket, r.documentos, Number(r.saldo || 0).toFixed(2)]),
+    ];
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), 'Aging CxP');
+  }
+
   const fileName = `facturapro_reporte_${new Date().toISOString().slice(0, 10)}.xlsx`;
   XLSX.writeFile(wb, fileName);
 }
@@ -246,6 +290,10 @@ export default function ReportsDashboard() {
             <ReportTable title="Ventas por dia" headers={['Fecha', 'Facturas', 'Total']} rows={(summary.dailySales || []).map((row) => [String(row.fecha).slice(0, 10), row.facturas, money(row.total)])} />
             <ReportTable title="Productos mas vendidos" headers={['Codigo', 'Producto', 'Cantidad']} rows={(summary.topProducts || []).map((row) => [row.codigo, row.nombre, Number(row.cantidad || 0).toFixed(2)])} />
             <ReportTable title="Cuentas por cobrar" headers={['Factura', 'Cliente', 'Saldo']} rows={(summary.receivables || []).map((row) => [row.numero_factura, row.cliente_nombre, money(row.saldo)])} />
+            <ReportTable title="Margen por producto" headers={['Codigo', 'Producto', 'Venta', 'Costo', 'Margen']} rows={(summary.marginByProduct || []).map((row) => [row.codigo, row.nombre, money(row.venta), money(row.costo), money(row.margen)])} />
+            <ReportTable title="Utilidad por periodo" headers={['Periodo', 'Ventas', 'Costo', 'Utilidad']} rows={(summary.profitByPeriod || []).map((row) => [String(row.periodo).slice(0, 10), money(row.ventas), money(row.costo), money(row.utilidad)])} />
+            <ReportTable title="Aging CxC" headers={['Rango', 'Documentos', 'Saldo']} rows={(summary.receivablesAging || []).map((row) => [formatAgingBucket(row.bucket), row.documentos, money(row.saldo)])} />
+            <ReportTable title="Aging CxP" headers={['Rango', 'Documentos', 'Saldo']} rows={(summary.payablesAging || []).map((row) => [formatAgingBucket(row.bucket), row.documentos, money(row.saldo)])} />
             <ReportTable title="Stock minimo" headers={['Codigo', 'Producto', 'Stock']} rows={(summary.lowStock || []).map((row) => [row.codigo, row.nombre, Number(row.stock_actual || 0).toFixed(2)])} />
             <ReportTable title="Formas de pago" headers={['Metodo', 'Total']} rows={(summary.paymentBreakdown || []).map((row) => [row.metodo_pago || 'Sin metodo', money(row.total)])} />
           </div>
@@ -253,6 +301,17 @@ export default function ReportsDashboard() {
       )}
     </div>
   );
+}
+
+function formatAgingBucket(bucket) {
+  const labels = {
+    POR_VENCER: 'Por vencer',
+    '1_30': '1 a 30 dias',
+    '31_60': '31 a 60 dias',
+    '61_90': '61 a 90 dias',
+    MAS_90: 'Mas de 90 dias',
+  };
+  return labels[bucket] || bucket || 'Sin rango';
 }
 
 function FilterInput({ label, type, value, onChange }) {

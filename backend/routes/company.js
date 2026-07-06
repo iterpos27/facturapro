@@ -4,7 +4,7 @@ const path = require('path');
 const multer = require('multer');
 const router = express.Router();
 const db = require('../db');
-const { authenticateToken } = require('./auth');
+const { authenticateToken, authorizePermissions } = require('./auth');
 
 const certificatesDir = path.resolve(__dirname, '..', 'certificates');
 if (!fs.existsSync(certificatesDir)) {
@@ -209,7 +209,7 @@ router.post('/logo', logoUpload.single('logo'), async (req, res) => {
  *
  * Body: { nuevo_ambiente: 'PRODUCCION' | 'PRUEBAS', confirmacion: 'PRODUCCION' | 'PRUEBAS' }
  */
-router.post('/switch-environment', authenticateToken, async (req, res) => {
+router.post('/switch-environment', authenticateToken, authorizePermissions('PRODUCTION_SWITCH'), async (req, res) => {
   const { nuevo_ambiente, confirmacion } = req.body || {};
   const target = String(nuevo_ambiente || '').toUpperCase().trim();
 

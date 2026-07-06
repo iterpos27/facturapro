@@ -21,6 +21,7 @@ import {
   cilList,
   cilTask,
   cilUserFollow,
+  cilBank,
 } from '@coreui/icons';
 
 /**
@@ -137,9 +138,10 @@ export default function AppSidebar({
           ))}
 
         {/* Configuración / Caja */}
-        {(permissions.cash || permissions.company || permissions.branches || permissions.sequentials || permissions.audit) &&
+        {(permissions.cash || permissions.banks || permissions.company || permissions.branches || permissions.sequentials || permissions.audit) &&
           renderSection('configuracion', 'Configuración / Caja', (
             <>
+              {permissions.banks       && navLink('/bancos',       cilBank,        'Bancos')}
               {permissions.cash        && navLink('/caja',         cilSpeedometer, 'Caja Chica')}
               {permissions.company     && navLink('/empresa',      cilSettings,    'Config. Empresa')}
               {permissions.branches    && navLink('/sucursales',   cilHome,        'Sucursales')}
