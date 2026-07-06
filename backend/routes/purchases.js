@@ -4,6 +4,7 @@ const db = require('../db');
 const { writeAudit } = require('../audit');
 const { authenticateToken } = require('./auth');
 const { validate, schemas } = require('../middleware/validate');
+const { recordInventoryCostMovement } = require('../inventory_costing');
 
 // Proteger todas las rutas de compras con autenticación y autorización
 router.use(authenticateToken);
@@ -271,20 +272,17 @@ router.post('/', async (req, res) => {
         parseFloat(itemIva || 0),
       ]);
 
-      // Incrementar stock y actualizar el ultimo costo de compra del producto.
-      await client.query(`
-        UPDATE productos
-        SET stock_actual = stock_actual + $1,
-            precio_compra = $3,
-            updated_at = CURRENT_TIMESTAMP
-        WHERE id_producto = $2
-      `, [parseFloat(cantidad), id_producto, parseFloat(costo_unitario)]);
-
-      // Registrar movimiento de inventario
-      await client.query(`
-        INSERT INTO movimientos_inventario (id_producto, tipo, cantidad, motivo, referencia, id_usuario)
-        VALUES ($1, 'INGRESO', $2, 'COMPRA', $3, $4)
-      `, [id_producto, parseFloat(cantidad), numero_factura_compra, id_usuario]);
+      await recordInventoryCostMovement(client, {
+        id_producto,
+        tipo: 'INGRESO',
+        cantidad,
+        motivo: 'COMPRA',
+        referencia: numero_factura_compra,
+        id_usuario,
+        costo_unitario,
+        documento_tipo: 'COMPRA',
+        documento_id: purchase.id_compra,
+      });
     }
 
     // 3. Registrar en Auditoría
@@ -345,17 +343,17 @@ router.put('/:id/cancel', async (req, res) => {
 
     const detailsRes = await client.query('SELECT * FROM compra_detalles WHERE id_compra = $1', [id]);
     for (const detail of detailsRes.rows) {
-      await client.query(`
-        UPDATE productos
-        SET stock_actual = stock_actual - $1,
-            updated_at = CURRENT_TIMESTAMP
-        WHERE id_producto = $2
-      `, [detail.cantidad, detail.id_producto]);
-
-      await client.query(`
-        INSERT INTO movimientos_inventario (id_producto, tipo, cantidad, motivo, referencia, id_usuario)
-        VALUES ($1, 'EGRESO', $2, 'COMPRA_ANULADA', $3, $4)
-      `, [detail.id_producto, detail.cantidad, purchase.numero_factura_compra, id_usuario]);
+      await recordInventoryCostMovement(client, {
+        id_producto: detail.id_producto,
+        tipo: 'EGRESO',
+        cantidad: detail.cantidad,
+        motivo: 'COMPRA_ANULADA',
+        referencia: purchase.numero_factura_compra,
+        id_usuario,
+        costo_unitario: detail.costo_unitario,
+        documento_tipo: 'COMPRA_ANULADA',
+        documento_id: purchase.id_compra,
+      });
     }
 
     const updateRes = await client.query(`

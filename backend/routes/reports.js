@@ -58,6 +58,7 @@ router.get('/summary', async (req, res) => {
       creditNotes,
       withholdings,
       approximateProfit,
+      inventoryValuation,
       cashSessions,
     ] = await Promise.all([
       db.query(`
@@ -146,12 +147,21 @@ router.get('/summary', async (req, res) => {
         ${purchaseClause ? `${purchaseClause} AND r.estado = 'EMITIDA'` : "WHERE r.estado = 'EMITIDA'"}
       `, purchaseParams).catch((error) => (error.code === '42P01' ? { rows: [{ retenciones: 0, total_retenido: 0 }] } : Promise.reject(error))),
       db.query(`
-        SELECT COALESCE(SUM((fd.precio_unitario - COALESCE(p.precio_compra, 0)) * fd.cantidad), 0) AS utilidad_estimada
+        SELECT COALESCE(SUM((fd.precio_unitario - COALESCE(p.costo_promedio, p.precio_compra, 0)) * fd.cantidad), 0) AS utilidad_estimada
         FROM factura_detalles fd
         JOIN facturas f ON fd.id_factura = f.id_factura
         JOIN productos p ON fd.id_producto = p.id_producto
         ${invoiceFilter.clause ? `${invoiceFilter.clause} AND f.estado = 'EMITIDA'` : "WHERE f.estado = 'EMITIDA'"}
       `, invoiceFilter.params),
+      db.query(`
+        SELECT
+          COUNT(*) FILTER (WHERE activo = true) AS productos_activos,
+          COALESCE(SUM(stock_actual), 0) AS unidades_stock,
+          COALESCE(SUM(COALESCE(valor_inventario, stock_actual * COALESCE(precio_compra, 0))), 0) AS valor_inventario,
+          COALESCE(AVG(NULLIF(COALESCE(costo_promedio, precio_compra, 0), 0)), 0) AS costo_promedio_general
+        FROM productos
+        WHERE activo = true
+      `).catch((error) => (error.code === '42703' ? { rows: [{ productos_activos: 0, unidades_stock: 0, valor_inventario: 0, costo_promedio_general: 0 }] } : Promise.reject(error))),
       (() => {
         const params = [];
         const where = [];
@@ -194,6 +204,7 @@ router.get('/summary', async (req, res) => {
       creditNotes: creditNotes.rows[0],
       withholdings: withholdings.rows[0],
       approximateProfit: approximateProfit.rows[0],
+      inventory: inventoryValuation.rows[0],
       cash: cashSessions.rows[0],
     });
   } catch (error) {

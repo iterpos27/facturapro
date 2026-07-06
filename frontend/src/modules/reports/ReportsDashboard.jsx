@@ -32,6 +32,8 @@ function exportToExcel(summary, filters) {
     [],
     ['UTILIDAD'],
     ['Utilidad Estimada', money(summary.approximateProfit?.utilidad_estimada)],
+    ['Valor Inventario', money(summary.inventory?.valor_inventario)],
+    ['Unidades en Stock', Number(summary.inventory?.unidades_stock || 0).toFixed(2)],
     [],
     ['CAJA'],
     ['Sesiones Cerradas', summary.cash?.cerradas || 0],
@@ -164,6 +166,7 @@ export default function ReportsDashboard() {
   const creditNotes = summary?.creditNotes || {};
   const withholdings = summary?.withholdings || {};
   const profit = summary?.approximateProfit || {};
+  const inventory = summary?.inventory || {};
   const cash = summary?.cash || {};
 
   return (
@@ -219,6 +222,8 @@ export default function ReportsDashboard() {
             <Metric title="Notas crédito" value={money(creditNotes.total_notas_credito)} tone="warning" />
             <Metric title="Retenido" value={money(withholdings.total_retenido)} tone="primary" />
             <Metric title="Utilidad est." value={money(profit.utilidad_estimada)} tone="success" />
+            <Metric title="Valor inventario" value={money(inventory.valor_inventario)} tone="success" />
+            <Metric title="Unid. en stock" value={Number(inventory.unidades_stock || 0).toFixed(2)} tone="info" />
             <Metric title="Cierres caja" value={cash.cerradas || 0} tone="info" />
             <Metric title="Diferencia caja" value={money(cash.diferencia_cierre)} tone="warning" />
           </div>

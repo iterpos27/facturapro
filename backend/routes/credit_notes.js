@@ -6,6 +6,7 @@ const { generarClaveAccesoSRI } = require('../sri_utils');
 const { authenticateToken } = require('./auth');
 const { validate, schemas } = require('../middleware/validate');
 const { formatDocumentNumber, getDefaultBranch, nextDocumentSequential } = require('../sequential_service');
+const { recordInventoryCostMovement } = require('../inventory_costing');
 
 // Proteger todas las rutas de notas de crédito con autenticación y autorización
 router.use(authenticateToken);
@@ -214,16 +215,16 @@ router.post('/', async (req, res) => {
         item.iva,
       ]);
 
-      await client.query(`
-        UPDATE productos
-        SET stock_actual = stock_actual + $1
-        WHERE id_producto = $2
-      `, [item.quantity, item.id_producto]);
-
-      await client.query(`
-        INSERT INTO movimientos_inventario (id_producto, tipo, cantidad, motivo, referencia, id_usuario)
-        VALUES ($1, 'INGRESO', $2, 'DEVOLUCION_NC', $3, $4)
-      `, [item.id_producto, item.quantity, numeroNotaCredito, id_usuario]);
+      await recordInventoryCostMovement(client, {
+        id_producto: item.id_producto,
+        tipo: 'INGRESO',
+        cantidad: item.quantity,
+        motivo: 'DEVOLUCION_NC',
+        referencia: numeroNotaCredito,
+        id_usuario,
+        documento_tipo: 'NOTA_CREDITO',
+        documento_id: creditNote.id_nota_credito,
+      });
     }
 
     const currentSaldo = parseFloat(factura.saldo || 0);
@@ -281,16 +282,16 @@ router.put('/:id/cancel', async (req, res) => {
 
     const detailsRes = await client.query('SELECT * FROM nota_credito_detalles WHERE id_nota_credito = $1', [id]);
     for (const detail of detailsRes.rows) {
-      await client.query(`
-        UPDATE productos
-        SET stock_actual = stock_actual - $1
-        WHERE id_producto = $2
-      `, [detail.cantidad, detail.id_producto]);
-
-      await client.query(`
-        INSERT INTO movimientos_inventario (id_producto, tipo, cantidad, motivo, referencia, id_usuario)
-        VALUES ($1, 'EGRESO', $2, 'NOTA_CREDITO_ANULADA', $3, $4)
-      `, [detail.id_producto, detail.cantidad, note.numero_nota_credito, id_usuario]);
+      await recordInventoryCostMovement(client, {
+        id_producto: detail.id_producto,
+        tipo: 'EGRESO',
+        cantidad: detail.cantidad,
+        motivo: 'NOTA_CREDITO_ANULADA',
+        referencia: note.numero_nota_credito,
+        id_usuario,
+        documento_tipo: 'NOTA_CREDITO_ANULADA',
+        documento_id: note.id_nota_credito,
+      });
     }
 
     await client.query(`

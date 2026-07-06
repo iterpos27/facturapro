@@ -6,6 +6,7 @@ const { writeAudit } = require('../audit');
 const { generarClaveAccesoSRI } = require('../sri_utils');
 const { validate, schemas } = require('../middleware/validate');
 const { formatDocumentNumber, getDefaultBranch, nextDocumentSequential } = require('../sequential_service');
+const { recordInventoryCostMovement } = require('../inventory_costing');
 
 router.use(authenticateToken);
 
@@ -390,16 +391,16 @@ router.post('/', validate(schemas.createInvoice), async (req, res) => {
         line.precio_total,
       ]);
 
-      await client.query(`
-        INSERT INTO movimientos_inventario (id_producto, tipo, cantidad, motivo, referencia, id_usuario)
-        VALUES ($1, 'EGRESO', $2, 'VENTA', $3, $4)
-      `, [line.id_producto, line.cantidad, numeroFactura, id_usuario]);
-
-      await client.query(`
-        UPDATE productos
-        SET stock_actual = stock_actual - $1
-        WHERE id_producto = $2
-      `, [line.cantidad, line.id_producto]);
+      await recordInventoryCostMovement(client, {
+        id_producto: line.id_producto,
+        tipo: 'EGRESO',
+        cantidad: line.cantidad,
+        motivo: 'VENTA',
+        referencia: numeroFactura,
+        id_usuario,
+        documento_tipo: 'FACTURA',
+        documento_id: id_factura,
+      });
     }
 
     if (id_proforma) {
@@ -452,16 +453,16 @@ router.put('/:id/cancel', async (req, res) => {
 
     const detailsRes = await client.query('SELECT * FROM factura_detalles WHERE id_factura = $1', [id]);
     for (const detail of detailsRes.rows) {
-      await client.query(`
-        INSERT INTO movimientos_inventario (id_producto, tipo, cantidad, motivo, referencia, id_usuario)
-        VALUES ($1, 'INGRESO', $2, 'DEVOLUCION', $3, $4)
-      `, [detail.id_producto, detail.cantidad, factura.numero_factura, id_usuario]);
-
-      await client.query(`
-        UPDATE productos
-        SET stock_actual = stock_actual + $1
-        WHERE id_producto = $2
-      `, [detail.cantidad, detail.id_producto]);
+      await recordInventoryCostMovement(client, {
+        id_producto: detail.id_producto,
+        tipo: 'INGRESO',
+        cantidad: detail.cantidad,
+        motivo: 'FACTURA_ANULADA',
+        referencia: factura.numero_factura,
+        id_usuario,
+        documento_tipo: 'FACTURA_ANULADA',
+        documento_id: factura.id_factura,
+      });
     }
 
     const updRes = await client.query(`

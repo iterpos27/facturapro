@@ -4,6 +4,8 @@ import { printDocument } from '../../../lib/printDocument';
 import { showToast } from '../../../lib/toast';
 import ProductSearchInput from '../../../shared/ProductSearchInput';
 
+const money = (value) => `$${Number(value || 0).toFixed(4)}`;
+
 export default function InventoryManager() {
   const [movements, setMovements] = useState([]);
   const [products, setProducts] = useState([]);
@@ -233,6 +235,8 @@ export default function InventoryManager() {
               <div className="d-flex justify-content-between flex-wrap gap-2 mb-2">
                 <strong>{kardexData.product.codigo} - {kardexData.product.nombre}</strong>
                 <span>Stock actual: <strong>{Number(kardexData.product.stock_actual || 0).toFixed(2)}</strong></span>
+                <span>Costo prom.: <strong>{money(kardexData.product.costo_promedio)}</strong></span>
+                <span>Valor inventario: <strong>{money(kardexData.product.valor_inventario)}</strong></span>
               </div>
               <div className="table-responsive">
                 <table className="table table-sm table-striped align-middle mb-0">
@@ -242,19 +246,31 @@ export default function InventoryManager() {
                       <th>Motivo</th>
                       <th>Referencia</th>
                       <th className="text-end">Entrada</th>
+                      <th className="text-end">Costo Ent.</th>
+                      <th className="text-end">Total Ent.</th>
                       <th className="text-end">Salida</th>
-                      <th className="text-end">Saldo</th>
+                      <th className="text-end">Costo Sal.</th>
+                      <th className="text-end">Total Sal.</th>
+                      <th className="text-end">Saldo Cant.</th>
+                      <th className="text-end">Costo Prom.</th>
+                      <th className="text-end">Saldo $</th>
                     </tr>
                   </thead>
                   <tbody>
                     {kardexData.movements.map((movement) => (
-                      <tr key={movement.id_movimiento}>
+                      <tr key={movement.id_kardex || movement.id_movimiento}>
                         <td>{new Date(movement.fecha).toLocaleString()}</td>
                         <td>{movement.motivo}</td>
                         <td>{movement.referencia || '-'}</td>
-                        <td className="text-end">{Number(movement.entrada || 0).toFixed(2)}</td>
-                        <td className="text-end">{Number(movement.salida || 0).toFixed(2)}</td>
-                        <td className="text-end fw-bold">{Number(movement.saldo_calculado || 0).toFixed(2)}</td>
+                        <td className="text-end">{Number(movement.cantidad_entrada || movement.entrada || 0).toFixed(2)}</td>
+                        <td className="text-end">{money(movement.costo_entrada)}</td>
+                        <td className="text-end">{money(movement.total_entrada)}</td>
+                        <td className="text-end">{Number(movement.cantidad_salida || movement.salida || 0).toFixed(2)}</td>
+                        <td className="text-end">{money(movement.costo_salida)}</td>
+                        <td className="text-end">{money(movement.total_salida)}</td>
+                        <td className="text-end fw-bold">{Number(movement.saldo_cantidad || movement.saldo_calculado || 0).toFixed(2)}</td>
+                        <td className="text-end">{money(movement.costo_promedio)}</td>
+                        <td className="text-end fw-bold">{money(movement.saldo_valor)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -317,6 +333,9 @@ export default function InventoryManager() {
                     <th>Producto</th>
                     <th>Tipo</th>
                     <th>Cantidad</th>
+                    <th>Costo Prom.</th>
+                    <th>Valor Mov.</th>
+                    <th>Saldo $</th>
                     <th>Motivo</th>
                     <th>Referencia</th>
                     <th>Operador</th>
@@ -345,6 +364,9 @@ export default function InventoryManager() {
                           </span>
                         </td>
                         <td style={{ fontWeight: '700' }}>{parseFloat(mov.cantidad).toFixed(2)}</td>
+                        <td>{money(mov.costo_promedio)}</td>
+                        <td>{money(mov.tipo === 'INGRESO' ? mov.total_entrada : mov.total_salida)}</td>
+                        <td>{money(mov.saldo_valor)}</td>
                         <td>{mov.motivo}</td>
                         <td>{mov.referencia || '-'}</td>
                         <td>{mov.username || 'Sistema'}</td>
@@ -379,6 +401,10 @@ export default function InventoryManager() {
                       <div className="client-card-info-item">
                         <span className="info-label">Fecha / Cantidad:</span>
                         <span className="info-val">{formatFecha} / <strong>{parseFloat(mov.cantidad).toFixed(2)}</strong></span>
+                      </div>
+                      <div className="client-card-info-item">
+                        <span className="info-label">Costo / Valor:</span>
+                        <span className="info-val">{money(mov.costo_promedio)} / {money(mov.saldo_valor)}</span>
                       </div>
                       <div className="client-card-info-item">
                         <span className="info-label">Motivo / Referencia:</span>
