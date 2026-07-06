@@ -1,8 +1,17 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import Swal from 'sweetalert2';
+import {
+  cilCloudUpload,
+  cilDescription,
+  cilEnvelopeClosed,
+  cilFile,
+  cilPrint,
+  cilTrash,
+} from '@coreui/icons';
 import { apiFetch, apiUrl } from '../../../lib/api';
 import { printDocument } from '../../../lib/printDocument';
 import { openRidePdf } from '../../../lib/rides';
+import DocumentActionButtons from '../../../shared/DocumentActionButtons';
 import CreditNoteRideModal from './CreditNoteRideModal';
 
 const money = (value) => (parseFloat(value || 0) || 0).toFixed(2);
@@ -564,7 +573,7 @@ export default function CreditNotesManager() {
                       <th>Fecha Emisión</th>
                       <th className="text-end">Monto Devuelto</th>
                       <th>SRI</th>
-                      <th style={{ width: '260px' }}>Acciones</th>
+                      <th style={{ width: '230px' }}>Acciones</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -584,65 +593,28 @@ export default function CreditNotesManager() {
                           </span>
                         </td>
                         <td>
-                          <button
-                            className="btn btn-info text-white"
-                            style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}
-                            onClick={() => handleFetchNcDetail(nc.id_nota_credito)}
-                          >
-                            Ver Detalle
-                          </button>
-                          <button
-                            className="btn btn-secondary ms-1"
-                            style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}
-                            onClick={async () => {
-                              try {
-                                const r = await apiFetch(`/api/credit-notes/${nc.id_nota_credito}`);
-                                const d = await r.json();
-                                if (r.ok) setViewRide(d);
-                              } catch { showAlert('Error al cargar RIDE.', 'error'); }
-                            }}
-                          >
-                            RIDE
-                          </button>
-                          <button
-                            className="btn btn-outline-primary ms-1"
-                            style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}
-                            onClick={() => openRidePdf('credit-note', nc.id_nota_credito)}
-                          >
-                            PDF
-                          </button>
-                          <button
-                            className="btn btn-warning ms-1"
-                            style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}
-                            onClick={() => handleGenerateSriXml(nc)}
-                          >
-                            XML SRI
-                          </button>
-                          {nc.estado !== 'ANULADA' && nc.sri_estado !== 'AUTORIZADO' && (
-                            <button
-                              className="btn btn-success ms-1"
-                              style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}
-                              onClick={() => handleProcessSri(nc)}
-                            >
-                              Procesar SRI
-                            </button>
-                          )}
-                          <button
-                            className="btn btn-secondary ms-1"
-                            style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}
-                            onClick={() => handleEmailSri(nc)}
-                          >
-                            Email
-                          </button>
-                          {nc.estado !== 'ANULADA' && (
-                            <button
-                              className="btn btn-danger ms-1"
-                              style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}
-                              onClick={() => handleCancelNc(nc)}
-                            >
-                              Anular
-                            </button>
-                          )}
+                          <DocumentActionButtons
+                            actions={[
+                              { label: 'Ver detalle', icon: cilDescription, tone: 'info', onClick: () => handleFetchNcDetail(nc.id_nota_credito) },
+                              {
+                                label: 'Ver RIDE',
+                                icon: cilPrint,
+                                tone: 'secondary',
+                                onClick: async () => {
+                                  try {
+                                    const r = await apiFetch(`/api/credit-notes/${nc.id_nota_credito}`);
+                                    const d = await r.json();
+                                    if (r.ok) setViewRide(d);
+                                  } catch { showAlert('Error al cargar RIDE.', 'error'); }
+                                },
+                              },
+                              { label: 'PDF', icon: cilFile, tone: 'primary', onClick: () => openRidePdf('credit-note', nc.id_nota_credito) },
+                              { label: 'XML SRI', icon: cilDescription, tone: 'warning', onClick: () => handleGenerateSriXml(nc) },
+                              nc.estado !== 'ANULADA' && nc.sri_estado !== 'AUTORIZADO' && { label: 'Procesar SRI', icon: cilCloudUpload, tone: 'success', onClick: () => handleProcessSri(nc) },
+                              { label: 'Enviar email', icon: cilEnvelopeClosed, tone: 'secondary', onClick: () => handleEmailSri(nc) },
+                              nc.estado !== 'ANULADA' && { label: 'Anular', icon: cilTrash, tone: 'danger', onClick: () => handleCancelNc(nc) },
+                            ]}
+                          />
                         </td>
                       </tr>
                     ))}

@@ -1,5 +1,14 @@
 import React from 'react';
+import {
+  cilCloudUpload,
+  cilDescription,
+  cilEnvelopeClosed,
+  cilFile,
+  cilPrint,
+  cilTrash,
+} from '@coreui/icons';
 import { openRidePdf } from '../../../../lib/rides';
+import DocumentActionButtons from '../../../../shared/DocumentActionButtons';
 
 const getStatusBadgeClass = (status) => {
   if (status === 'EMITIDA') return 'bg-success';
@@ -54,7 +63,7 @@ export default function InvoiceTable({
               <th>Cobranza</th>
               <th>Estado</th>
               <th>SRI</th>
-              <th style={{ width: '340px' }}>Acciones</th>
+              <th style={{ width: '230px' }}>Acciones</th>
             </tr>
           </thead>
           <tbody>
@@ -91,54 +100,16 @@ export default function InvoiceTable({
                   </span>
                 </td>
                 <td>
-                  <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                    <button
-                      className="btn btn-info text-white"
-                      style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}
-                      onClick={() => onViewRide(invoice.id_factura)}
-                    >
-                      Ver RIDE
-                    </button>
-                    <button
-                      className="btn btn-outline-primary"
-                      style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}
-                      onClick={() => openRidePdf('invoice', invoice.id_factura)}
-                    >
-                      PDF
-                    </button>
-                    {invoice.estado !== 'ANULADA' && (
-                      <>
-                        <button
-                          className="btn btn-warning"
-                          style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}
-                          onClick={() => onGenerateSriTestXml(invoice.id_factura)}
-                        >
-                          XML SRI
-                        </button>
-                        <button
-                          className="btn btn-success"
-                          style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}
-                          onClick={() => onProcessSriTest(invoice.id_factura)}
-                        >
-                          Procesar SRI
-                        </button>
-                        <button
-                          className="btn btn-secondary"
-                          style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}
-                          onClick={() => onEmailSri(invoice)}
-                        >
-                          Email
-                        </button>
-                        <button
-                          className="btn btn-danger"
-                          style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}
-                          onClick={() => onCancel(invoice.id_factura, invoice.numero_factura)}
-                        >
-                          Anular
-                        </button>
-                      </>
-                    )}
-                  </div>
+                  <DocumentActionButtons
+                    actions={[
+                      { label: 'Ver RIDE', icon: cilPrint, tone: 'info', onClick: () => onViewRide(invoice.id_factura) },
+                      { label: 'PDF', icon: cilFile, tone: 'primary', onClick: () => openRidePdf('invoice', invoice.id_factura) },
+                      invoice.estado !== 'ANULADA' && { label: 'XML SRI', icon: cilDescription, tone: 'warning', onClick: () => onGenerateSriTestXml(invoice.id_factura) },
+                      invoice.estado !== 'ANULADA' && { label: 'Procesar SRI', icon: cilCloudUpload, tone: 'success', onClick: () => onProcessSriTest(invoice.id_factura) },
+                      invoice.estado !== 'ANULADA' && { label: 'Enviar email', icon: cilEnvelopeClosed, tone: 'secondary', onClick: () => onEmailSri(invoice) },
+                      invoice.estado !== 'ANULADA' && { label: 'Anular', icon: cilTrash, tone: 'danger', onClick: () => onCancel(invoice.id_factura, invoice.numero_factura) },
+                    ]}
+                  />
                 </td>
               </tr>
             ))}

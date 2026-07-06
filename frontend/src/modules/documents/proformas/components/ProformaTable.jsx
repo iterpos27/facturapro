@@ -1,5 +1,14 @@
 import React from 'react';
+import {
+  cilCart,
+  cilCheckCircle,
+  cilFile,
+  cilPencil,
+  cilPrint,
+  cilTrash,
+} from '@coreui/icons';
 import { openRidePdf } from '../../../../lib/rides';
+import DocumentActionButtons from '../../../../shared/DocumentActionButtons';
 
 const getStatusBadgeClass = (status) => {
   if (status === 'BORRADOR') return 'bg-secondary';
@@ -38,7 +47,7 @@ export default function ProformaTable({
               <th>Vence</th>
               <th>Total</th>
               <th>Estado</th>
-              <th style={{ width: '220px' }}>Acciones</th>
+              <th style={{ width: '210px' }}>Acciones</th>
             </tr>
           </thead>
           <tbody>
@@ -58,58 +67,16 @@ export default function ProformaTable({
                   </span>
                 </td>
                 <td>
-                  <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                    <button
-                      className="btn btn-info text-white"
-                      style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}
-                      onClick={() => onViewRide(proforma)}
-                    >
-                      Ver RIDE
-                    </button>
-                    <button
-                      className="btn btn-outline-primary"
-                      style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}
-                      onClick={() => openRidePdf('proforma', proforma.id)}
-                    >
-                      PDF
-                    </button>
-                    {proforma.status === 'BORRADOR' && (
-                      <>
-                        <button
-                          className="btn btn-secondary"
-                          style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}
-                          onClick={() => onEdit(proforma)}
-                        >
-                          Editar
-                        </button>
-                        <button
-                          className="btn btn-primary"
-                          style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}
-                          onClick={() => onApprove(proforma.id, proforma.number)}
-                        >
-                          Aprobar
-                        </button>
-                      </>
-                    )}
-                    {['BORRADOR', 'APROBADA'].includes(proforma.status) && (
-                      <button
-                        className="btn btn-danger"
-                        style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}
-                        onClick={() => onCancel(proforma.id, proforma.number)}
-                      >
-                        Anular
-                      </button>
-                    )}
-                    {proforma.status === 'APROBADA' && (
-                      <button
-                        className="btn btn-success"
-                        style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}
-                        onClick={() => onInvoice(proforma)}
-                      >
-                        Facturar
-                      </button>
-                    )}
-                  </div>
+                  <DocumentActionButtons
+                    actions={[
+                      { label: 'Ver RIDE', icon: cilPrint, tone: 'info', onClick: () => onViewRide(proforma) },
+                      { label: 'PDF', icon: cilFile, tone: 'primary', onClick: () => openRidePdf('proforma', proforma.id) },
+                      proforma.status === 'BORRADOR' && { label: 'Editar', icon: cilPencil, tone: 'secondary', onClick: () => onEdit(proforma) },
+                      proforma.status === 'BORRADOR' && { label: 'Aprobar', icon: cilCheckCircle, tone: 'success', onClick: () => onApprove(proforma.id, proforma.number) },
+                      ['BORRADOR', 'APROBADA'].includes(proforma.status) && { label: 'Anular', icon: cilTrash, tone: 'danger', onClick: () => onCancel(proforma.id, proforma.number) },
+                      proforma.status === 'APROBADA' && { label: 'Facturar', icon: cilCart, tone: 'success', onClick: () => onInvoice(proforma) },
+                    ]}
+                  />
                 </td>
               </tr>
             ))}
