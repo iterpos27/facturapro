@@ -471,6 +471,29 @@
   line-height: 1;
 }
 
+.document-icon-svg {
+  width: 17px;
+  height: 17px;
+  display: block;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.15;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+
+.document-icon-btn.btn-info,
+.document-icon-btn.btn-success,
+.document-icon-btn.btn-secondary,
+.document-icon-btn.btn-danger {
+  color: #fff !important;
+}
+
+.document-icon-btn.btn-warning {
+  color: #1f2937 !important;
+}
+
 .client-data-panel > .card-header {
   background: transparent !important;
   border: 0;
