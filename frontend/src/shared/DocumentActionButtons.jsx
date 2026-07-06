@@ -83,6 +83,20 @@ function getIconKey(label = '') {
   return 'detail';
 }
 
+function getShortLabel(iconKey) {
+  const labels = {
+    detail: 'D',
+    ride: 'R',
+    pdf: 'PDF',
+    xml: 'XML',
+    sri: 'SRI',
+    email: '@',
+    cancel: 'X',
+    edit: 'E',
+  };
+  return labels[iconKey] || 'D';
+}
+
 export default function DocumentActionButtons({ actions }) {
   return (
     <div className="document-action-toolbar">
@@ -101,6 +115,7 @@ export default function DocumentActionButtons({ actions }) {
             <svg className="document-icon-svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
               {iconPaths[iconKey]}
             </svg>
+            <span className="document-icon-fallback" aria-hidden="true">{getShortLabel(iconKey)}</span>
           </button>
         );
       })}
