@@ -1,4 +1,5 @@
 import React from 'react';
+import { openRidePdf } from '../../../../lib/rides';
 
 const getStatusBadgeClass = (status) => {
   if (status === 'BORRADOR') return 'bg-secondary';
@@ -64,6 +65,13 @@ export default function ProformaTable({
                       onClick={() => onViewRide(proforma)}
                     >
                       Ver RIDE
+                    </button>
+                    <button
+                      className="btn btn-outline-primary"
+                      style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}
+                      onClick={() => openRidePdf('proforma', proforma.id)}
+                    >
+                      PDF
                     </button>
                     {proforma.status === 'BORRADOR' && (
                       <>
@@ -137,6 +145,9 @@ export default function ProformaTable({
             <div className="client-card-actions">
               <button className="btn btn-info text-white" onClick={() => onViewRide(proforma)}>
                 Ver RIDE
+              </button>
+              <button className="btn btn-outline-primary" onClick={() => openRidePdf('proforma', proforma.id)}>
+                PDF
               </button>
               {proforma.status === 'BORRADOR' && (
                 <button className="btn btn-secondary" onClick={() => onEdit(proforma)}>

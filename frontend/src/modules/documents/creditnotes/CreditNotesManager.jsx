@@ -2,6 +2,7 @@ import React, { useEffect, useState, useMemo } from 'react';
 import Swal from 'sweetalert2';
 import { apiFetch, apiUrl } from '../../../lib/api';
 import { printDocument } from '../../../lib/printDocument';
+import { openRidePdf } from '../../../lib/rides';
 import CreditNoteRideModal from './CreditNoteRideModal';
 
 const money = (value) => (parseFloat(value || 0) || 0).toFixed(2);
@@ -602,6 +603,13 @@ export default function CreditNotesManager() {
                             }}
                           >
                             RIDE
+                          </button>
+                          <button
+                            className="btn btn-outline-primary ms-1"
+                            style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}
+                            onClick={() => openRidePdf('credit-note', nc.id_nota_credito)}
+                          >
+                            PDF
                           </button>
                           <button
                             className="btn btn-warning ms-1"

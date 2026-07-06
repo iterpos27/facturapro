@@ -1,4 +1,5 @@
 import React from 'react';
+import { openRidePdf } from '../../../../lib/rides';
 
 const getStatusBadgeClass = (status) => {
   if (status === 'EMITIDA') return 'bg-success';
@@ -98,6 +99,13 @@ export default function InvoiceTable({
                     >
                       Ver RIDE
                     </button>
+                    <button
+                      className="btn btn-outline-primary"
+                      style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}
+                      onClick={() => openRidePdf('invoice', invoice.id_factura)}
+                    >
+                      PDF
+                    </button>
                     {invoice.estado !== 'ANULADA' && (
                       <>
                         <button
@@ -181,6 +189,9 @@ export default function InvoiceTable({
             <div className="client-card-actions">
               <button className="btn btn-info text-white" onClick={() => onViewRide(invoice.id_factura)}>
                 Ver RIDE
+              </button>
+              <button className="btn btn-outline-primary" onClick={() => openRidePdf('invoice', invoice.id_factura)}>
+                PDF
               </button>
               {invoice.estado !== 'ANULADA' && (
                 <>

@@ -118,6 +118,9 @@ Documentos cubiertos:
 
 - Completar validacion manual SRI con datos reales para todos los documentos.
 - Historial de envio de correos con XML y RIDE.
+- RIDE PDF generado desde backend para proformas, facturas, notas de credito y retenciones.
+- Backup/restauracion PostgreSQL con `npm run db:backup` y `npm run db:restore`.
+- Manual operativo en `docs/MANUAL_OPERATIVO.md`.
 - Cuentas por pagar para compras a credito.
 - Kardex valorizado y costo promedio.
 - Backup automatico de PostgreSQL y prueba de restauracion.

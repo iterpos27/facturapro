@@ -11,6 +11,8 @@ node_modules/
 /frontend/.env
 /backend/certificates/
 /backend/uploads/
+/backend/backups/*
+!/backend/backups/.gitkeep
 
 # Compilaciones y dist
 /frontend/dist/
