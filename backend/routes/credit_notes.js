@@ -1,12 +1,12 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
-const { writeAudit } = require('../audit');
-const { generarClaveAccesoSRI } = require('../sri_utils');
+const { writeAudit } = require('../utils/audit');
+const { generarClaveAccesoSRI } = require('../utils/sri_utils');
 const { authenticateToken, authorizePermissions } = require('./auth');
 const { validate, schemas } = require('../middleware/validate');
-const { formatDocumentNumber, getDefaultBranch, nextDocumentSequential } = require('../sequential_service');
-const { recordInventoryCostMovement } = require('../inventory_costing');
+const { formatDocumentNumber, getDefaultBranch, nextDocumentSequential } = require('../services/sequential_service');
+const { recordInventoryCostMovement } = require('../services/inventory_costing');
 
 // Proteger todas las rutas de notas de crédito con autenticación y autorización
 router.use(authenticateToken);

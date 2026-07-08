@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
-const { writeAudit } = require('../audit');
+const { writeAudit } = require('../utils/audit');
 const { authenticateToken } = require('./auth');
 
 // Proteger todas las rutas de secuenciales con autenticación y autorización

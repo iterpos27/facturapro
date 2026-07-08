@@ -1,10 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
-const { writeAudit } = require('../audit');
+const { writeAudit } = require('../utils/audit');
 const { authenticateToken } = require('./auth');
 const { validate, schemas } = require('../middleware/validate');
-const { recordInventoryCostMovement } = require('../inventory_costing');
+const { recordInventoryCostMovement } = require('../services/inventory_costing');
 
 // Proteger todas las rutas de compras con autenticación y autorización
 router.use(authenticateToken);

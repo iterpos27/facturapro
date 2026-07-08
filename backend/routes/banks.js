@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 const { authenticateToken } = require('./auth');
-const { writeAudit } = require('../audit');
+const { writeAudit } = require('../utils/audit');
 
 router.use(authenticateToken);
 

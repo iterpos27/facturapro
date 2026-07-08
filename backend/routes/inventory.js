@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 const { authenticateToken } = require('./auth');
-const { recordInventoryCostMovement } = require('../inventory_costing');
+const { recordInventoryCostMovement } = require('../services/inventory_costing');
 
 // Proteger todas las rutas de inventario con autenticación
 router.use(authenticateToken);

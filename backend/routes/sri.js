@@ -1,22 +1,22 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
-const { writeAudit } = require('../audit');
+const { writeAudit } = require('../utils/audit');
 const {
   buildFacturaXml,
   buildNotaCreditoXml,
   buildRetencionXml,
   claveAccesoPerteneceAlRuc,
-} = require('../sri_utils');
+} = require('../utils/sri_utils');
 const {
   getSriEndpoints,
   validateCertificateConfig,
   signXmlWithCertificate,
   sendReceipt,
   authorizeReceipt,
-} = require('../sri_service');
+} = require('../services/sri_service');
 const { authenticateToken, authorizePermissions } = require('./auth');
-const { sendAuthorizedDocument } = require('../email_service');
+const { sendAuthorizedDocument } = require('../services/email_service');
 
 // Proteger todas las rutas de SRI con autenticación y autorización
 router.use(authenticateToken);

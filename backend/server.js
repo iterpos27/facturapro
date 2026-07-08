@@ -5,7 +5,7 @@ const rateLimit = require('express-rate-limit');
 const path = require('path');
 require('dotenv').config();
 
-const logger = require('./logger');
+const logger = require('./utils/logger');
 
 if (process.env.NODE_ENV === 'production' && (!process.env.JWT_SECRET || process.env.JWT_SECRET === 'dev-only-facturapro-secret')) {
   logger.fatal('FATAL: Se debe configurar JWT_SECRET con un valor seguro en entornos de producción.');

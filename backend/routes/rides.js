@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { loadRide, renderRideHtml, generateRidePdf, normalizeType } = require('../ride_service');
+const { loadRide, renderRideHtml, generateRidePdf, normalizeType } = require('../services/ride_service');
 
 function filenameFor(type, ride, extension) {
   const cleanNumber = String(ride.number || 'documento').replace(/[^a-zA-Z0-9_-]/g, '-');

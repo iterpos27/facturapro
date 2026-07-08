@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const PDFDocument = require('pdfkit');
-const db = require('./db');
+const db = require('../db');
 
 const money = (value) => `$${(Number(value || 0) || 0).toFixed(2)}`;
 const qty = (value) => (Number(value || 0) || 0).toFixed(2);
@@ -11,7 +11,7 @@ function resolveLogoPath(company) {
   const logo = text(company?.logo_url);
   if (!logo || logo.startsWith('http')) return null;
   const relative = logo.replace(/^\/+/, '');
-  const filePath = path.resolve(__dirname, relative);
+  const filePath = path.resolve(__dirname, '..', relative);
   return fs.existsSync(filePath) ? filePath : null;
 }
 

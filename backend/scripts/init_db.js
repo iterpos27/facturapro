@@ -1,4 +1,4 @@
-const db = require('./db');
+const db = require('../db');
 
 const createTablesSQL = `
 CREATE TABLE IF NOT EXISTS clients (

@@ -453,21 +453,25 @@
 }
 
 .document-action-toolbar {
-  display: flex;
+  display: inline-grid;
+  grid-template-rows: repeat(2, 28px);
+  grid-auto-flow: column;
+  grid-auto-columns: 42px;
   align-items: center;
-  gap: 0.35rem;
-  flex-wrap: nowrap;
+  justify-content: end;
+  gap: 0.25rem;
+  min-height: 60px;
 }
 
 .document-icon-btn {
-  width: 34px;
-  height: 34px;
-  min-width: 34px;
+  width: 42px;
+  height: 28px;
+  min-width: 42px;
   padding: 0 !important;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 7px;
+  border-radius: 8px;
   line-height: 1;
 }
 
@@ -2100,13 +2104,14 @@ body[data-theme='dark'] .btn-light:hover {
 /* Acciones compactas de documentos: deben verse sobre cualquier regla global de .btn. */
 .document-action-toolbar .document-icon-btn.btn {
   position: relative !important;
-  width: 34px !important;
-  height: 30px !important;
-  min-width: 34px !important;
+  width: 42px !important;
+  height: 28px !important;
+  min-width: 42px !important;
   padding: 0 !important;
   gap: 0 !important;
-  border-radius: 7px !important;
-  box-shadow: none !important;
+  border-radius: 8px !important;
+  border-width: 1px !important;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08) !important;
   overflow: hidden !important;
 }
 
@@ -2130,7 +2135,7 @@ body[data-theme='dark'] .btn-light:hover {
   width: 100% !important;
   height: 100% !important;
   color: inherit !important;
-  font-size: 0.66rem !important;
+  font-size: 0.62rem !important;
   font-weight: 900 !important;
   letter-spacing: 0 !important;
   line-height: 1 !important;
@@ -2149,4 +2154,32 @@ body[data-theme='dark'] .btn-light:hover {
 .document-action-toolbar .document-icon-btn.btn-secondary,
 .document-action-toolbar .document-icon-btn.btn-outline-primary {
   background: #ffffff !important;
+}
+
+.document-action-toolbar .document-icon-btn.btn:disabled {
+  color: #94a3b8 !important;
+  background: #f8fafc !important;
+  border-color: #d8e0ea !important;
+  opacity: 1 !important;
+}
+
+.audit-detail-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  max-width: 560px;
+}
+
+.audit-detail-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  max-width: 100%;
+  padding: 0.2rem 0.45rem;
+  border: 1px solid #dbe5f0;
+  border-radius: 6px;
+  color: #334155;
+  background: #ffffff;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
 }

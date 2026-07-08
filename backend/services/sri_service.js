@@ -28,7 +28,7 @@ function resolveCertificatePath(certificatePath) {
 
   const resolvedPath = path.isAbsolute(value)
     ? value
-    : path.resolve(__dirname, value);
+    : path.resolve(__dirname, '..', value);
 
   if (!fs.existsSync(resolvedPath)) {
     throw new Error(`No se encontro el certificado configurado: ${resolvedPath}`);

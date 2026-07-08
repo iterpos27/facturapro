@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 const { authenticateToken } = require('./auth');
-const { ensureBranchSequentials } = require('../sequential_service');
+const { ensureBranchSequentials } = require('../services/sequential_service');
 
 // Proteger todas las rutas del enrutador de sucursales
 router.use(authenticateToken);

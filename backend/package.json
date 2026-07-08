@@ -5,7 +5,7 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "db:init": "node init_db.js",
+    "db:init": "node scripts/init_db.js",
     "db:migrate": "node migrations/migrate.js",
     "db:migrate:rename": "node migrations/migrate_rename.js",
     "db:migrate:phase1": "node migrations/migrate_phase1.js",
@@ -29,6 +29,7 @@
     "db:migrate:payables": "node migrations/migrate_phase18_payables.js",
     "db:migrate:inventory-costing": "node migrations/migrate_phase19_inventory_costing.js",
     "db:migrate:preproduction": "node migrations/migrate_phase20_preproduction.js",
+    "db:migrate:sri-field-lengths": "node migrations/migrate_phase21_sri_field_lengths.js",
     "db:migrate:all": "node migrations/migrate_all.js",
     "db:backup": "node scripts/backup_database.js",
     "db:restore": "node scripts/restore_database.js",

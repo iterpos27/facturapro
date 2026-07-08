@@ -85,16 +85,16 @@ function getIconKey(label = '') {
 
 function getShortLabel(iconKey) {
   const labels = {
-    detail: 'D',
-    ride: 'R',
+    detail: 'Ver',
+    ride: 'RIDE',
     pdf: 'PDF',
     xml: 'XML',
     sri: 'SRI',
-    email: '@',
+    email: 'Mail',
     cancel: 'X',
-    edit: 'E',
+    edit: 'Edit',
   };
-  return labels[iconKey] || 'D';
+  return labels[iconKey] || 'Ver';
 }
 
 export default function DocumentActionButtons({ actions }) {

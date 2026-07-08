@@ -6,7 +6,7 @@
  */
 
 const nodemailer = require('nodemailer');
-const logger = require('./logger');
+const logger = require('../utils/logger');
 
 /**
  * Crea el transporter de nodemailer desde variables de entorno.

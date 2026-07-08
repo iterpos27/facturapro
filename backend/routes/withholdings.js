@@ -1,11 +1,11 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
-const { writeAudit } = require('../audit');
-const { generarClaveAccesoSRI } = require('../sri_utils');
+const { writeAudit } = require('../utils/audit');
+const { generarClaveAccesoSRI } = require('../utils/sri_utils');
 const { authenticateToken, authorizePermissions } = require('./auth');
 const { validate, schemas } = require('../middleware/validate');
-const { formatDocumentNumber, getDefaultBranch, nextDocumentSequential } = require('../sequential_service');
+const { formatDocumentNumber, getDefaultBranch, nextDocumentSequential } = require('../services/sequential_service');
 
 // Proteger todas las rutas de retenciones con autenticación y autorización
 router.use(authenticateToken);
