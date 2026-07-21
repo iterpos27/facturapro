@@ -5,6 +5,9 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
+    "test": "node --test test/*.test.js",
+    "start:prod": "NODE_ENV=production node server.js",
+    "dev": "node --watch server.js",
     "db:init": "node scripts/init_db.js",
     "db:migrate": "node migrations/migrate.js",
     "db:migrate:rename": "node migrations/migrate_rename.js",
@@ -46,6 +49,7 @@
     "@xmldom/xmldom": "^0.9.10",
     "axios": "^1.18.1",
     "bcryptjs": "^3.0.3",
+    "compression": "^1.8.1",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "ec-sri-invoice-signer": "^1.7.5",

@@ -1,7 +1,9 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
+import { apiFetch } from '../lib/api';
 
 const MIN_SEARCH_LENGTH = 2;
 const MAX_RESULTS = 20;
+const DEBOUNCE_MS = 300;
 
 const normalize = (value) => String(value || '').trim().toLowerCase();
 
@@ -12,6 +14,22 @@ const getProductLabel = (product) => {
   return `[${code}] ${product.nombre} (Stock: ${stock})`;
 };
 
+/**
+ * ProductSearchInput
+ *
+ * Modos de operación:
+ * 1. Con `products` prop (array) → búsqueda local en memoria (comportamiento original)
+ * 2. Sin `products` o array vacío → búsqueda async via API /api/products?search=...
+ *
+ * Props:
+ *   products       - Array de productos precargados (opcional)
+ *   value          - ID del producto seleccionado (string)
+ *   onChange       - Callback al seleccionar un producto (id string)
+ *   required       - Campo obligatorio en form
+ *   disabled       - Deshabilitar input
+ *   placeholder    - Texto de ayuda
+ *   clearOnSelect  - Limpiar query al seleccionar
+ */
 export default function ProductSearchInput({
   products,
   value,
@@ -22,16 +40,70 @@ export default function ProductSearchInput({
   clearOnSelect = false,
 }) {
   const wrapperRef = useRef(null);
+  const debounceRef = useRef(null);
+
+  // Modo: async si no hay array de productos precargado o está vacío
+  const asyncMode = !products || products.length === 0;
+
   const selectedProduct = useMemo(
-    () => products.find((product) => String(product.id_producto) === String(value)) || null,
+    () => (products || []).find((product) => String(product.id_producto) === String(value)) || null,
     [products, value],
   );
+
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(false);
+  const [asyncResults, setAsyncResults] = useState([]);
+  const [asyncLoading, setAsyncLoading] = useState(false);
 
+  // Sync: mostrar label del producto seleccionado
   useEffect(() => {
-    setQuery(getProductLabel(selectedProduct));
-  }, [selectedProduct]);
+    if (!asyncMode) {
+      setQuery(getProductLabel(selectedProduct));
+    }
+  }, [selectedProduct, asyncMode]);
+
+  // Async mode: resolver el producto seleccionado por ID cuando viene de fuera (ej: proforma)
+  useEffect(() => {
+    if (!asyncMode || !value) {
+      return;
+    }
+    // Si ya lo tenemos en asyncResults, usarlo
+    const fromResults = asyncResults.find((p) => String(p.id_producto) === String(value));
+    if (fromResults) {
+      setQuery(clearOnSelect ? '' : getProductLabel(fromResults));
+      return;
+    }
+    // Si no, fetch por ID
+    apiFetch(`/api/products/${value}`)
+      .then((res) => res.ok ? res.json() : null)
+      .then((product) => {
+        if (product) {
+          if (!clearOnSelect) setQuery(getProductLabel(product));
+        }
+      })
+      .catch(() => {});
+  }, [value, asyncMode]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Búsqueda async con debounce
+  const searchAsync = useCallback(async (term) => {
+    if (term.length < MIN_SEARCH_LENGTH) {
+      setAsyncResults([]);
+      return;
+    }
+    setAsyncLoading(true);
+    try {
+      const params = new URLSearchParams({ search: term, limit: String(MAX_RESULTS), page: '1' });
+      const res = await apiFetch(`/api/products?${params}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      const list = Array.isArray(data) ? data : (data.data || []);
+      setAsyncResults(list);
+    } catch {
+      setAsyncResults([]);
+    } finally {
+      setAsyncLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -39,16 +111,16 @@ export default function ProductSearchInput({
         setOpen(false);
       }
     };
-
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const searchTerm = normalize(query);
-  const results = useMemo(() => {
+  // Búsqueda local (modo con productos precargados)
+  const localResults = useMemo(() => {
+    if (asyncMode) return [];
+    const searchTerm = normalize(query);
     if (searchTerm.length < MIN_SEARCH_LENGTH) return [];
-
-    return products
+    return (products || [])
       .filter((product) => {
         const haystack = [
           product.codigo,
@@ -60,13 +132,21 @@ export default function ProductSearchInput({
         return haystack.includes(searchTerm);
       })
       .slice(0, MAX_RESULTS);
-  }, [products, searchTerm]);
+  }, [products, query, asyncMode]);
+
+  const results = asyncMode ? asyncResults : localResults;
+  const isLoading = asyncMode && asyncLoading;
+  const searchTerm = normalize(query);
 
   const handleInputChange = (event) => {
-    setQuery(event.target.value);
+    const newQuery = event.target.value;
+    setQuery(newQuery);
     setOpen(true);
-    if (value) {
-      onChange('');
+    if (value) onChange('');
+
+    if (asyncMode) {
+      clearTimeout(debounceRef.current);
+      debounceRef.current = setTimeout(() => searchAsync(normalize(newQuery)), DEBOUNCE_MS);
     }
   };
 
@@ -92,7 +172,9 @@ export default function ProductSearchInput({
 
       {open && !disabled && (
         <div className="product-search-results">
-          {searchTerm.length < MIN_SEARCH_LENGTH ? (
+          {isLoading ? (
+            <div className="product-search-empty">Buscando...</div>
+          ) : searchTerm.length < MIN_SEARCH_LENGTH ? (
             <div className="product-search-empty">Escribe al menos 2 caracteres para buscar.</div>
           ) : results.length === 0 ? (
             <div className="product-search-empty">No se encontraron productos.</div>

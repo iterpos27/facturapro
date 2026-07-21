@@ -3,13 +3,14 @@ const router = express.Router();
 const db = require('../db');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const rateLimit = require('express-rate-limit');
+const logger = require('../utils/logger');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-only-facturapro-secret';
 
-// Limitador de intentos de login en memoria para evitar ataques de fuerza bruta
+// Limitador de intentos fallidos de login.
 const rateLimitWindow = 15 * 60 * 1000; // 15 minutos
 const maxLoginAttempts = 5;
-const loginAttempts = new Map();
 
 const ROLE_PERMISSION_FALLBACK = {
   ADMINISTRADOR: [
@@ -78,31 +79,14 @@ async function getUserPermissions(idRol) {
   return permissions.length > 0 ? permissions : (ROLE_PERMISSION_FALLBACK[roleName] || []);
 }
 
-const loginLimiter = (req, res, next) => {
-  const ip = req.ip || req.headers['x-forwarded-for'] || '127.0.0.1';
-  const now = Date.now();
-
-  if (!loginAttempts.has(ip)) {
-    loginAttempts.set(ip, { count: 1, resetTime: now + rateLimitWindow });
-    return next();
-  }
-
-  const attempt = loginAttempts.get(ip);
-  if (now > attempt.resetTime) {
-    loginAttempts.set(ip, { count: 1, resetTime: now + rateLimitWindow });
-    return next();
-  }
-
-  attempt.count += 1;
-  if (attempt.count > maxLoginAttempts) {
-    const minutesLeft = Math.ceil((attempt.resetTime - now) / 60000);
-    return res.status(429).json({
-      error: `Demasiados intentos fallidos de inicio de sesión. Por favor, intente de nuevo en ${minutesLeft} minutos.`
-    });
-  }
-
-  next();
-};
+const loginLimiter = rateLimit({
+  windowMs: rateLimitWindow,
+  limit: maxLoginAttempts,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skipSuccessfulRequests: true,
+  message: { error: 'Demasiados intentos fallidos de inicio de sesion. Intente nuevamente en 15 minutos.' },
+});
 
 // 1. Iniciar Sesión (POST /api/auth/login)
 router.post('/login', loginLimiter, async (req, res) => {
@@ -146,7 +130,7 @@ router.post('/login', loginLimiter, async (req, res) => {
         permissions
       },
       JWT_SECRET,
-      { expiresIn: '24h' }
+      { expiresIn: process.env.JWT_EXPIRES_IN || '8h', algorithm: 'HS256' }
     );
 
     res.json({
@@ -162,23 +146,44 @@ router.post('/login', loginLimiter, async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error al iniciar sesión:', error);
+    logger.error({ err: error }, 'Error al iniciar sesión');
     res.status(500).json({ error: 'Error del servidor al procesar la solicitud.' });
   }
 });
 
 // Middleware de verificación de JWT
-const authenticateToken = (req, res, next) => {
-  const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1];
+const authenticateToken = async (req, res, next) => {
+  if (req.user?._validated) return next();
 
+  const authHeader = req.headers.authorization;
+  const token = authHeader && authHeader.split(' ')[1];
   if (!token) return res.status(401).json({ error: 'Acceso denegado. Token no provisto.' });
 
-  jwt.verify(token, JWT_SECRET, (err, user) => {
-    if (err) return res.status(403).json({ error: 'Token inválido o expirado.' });
-    req.user = user;
-    next();
-  });
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] });
+    const result = await db.query(`
+      SELECT u.id_usuario, u.username, u.email, u.id_rol, r.nombre AS rol_nombre
+      FROM usuarios u
+      JOIN roles r ON r.id_rol = u.id_rol
+      WHERE u.id_usuario = $1 AND u.activo = true AND r.activo = true
+    `, [decoded.id_usuario]);
+
+    if (result.rows.length === 0) {
+      return res.status(403).json({ error: 'La sesion fue revocada o el usuario esta inactivo.' });
+    }
+
+    const currentUser = result.rows[0];
+    const permissions = await getUserPermissions(currentUser.id_rol);
+    req.user = { ...decoded, ...currentUser, permissions };
+    Object.defineProperty(req.user, '_validated', { value: true, enumerable: false });
+    return next();
+  } catch (error) {
+    if (['JsonWebTokenError', 'TokenExpiredError', 'NotBeforeError'].includes(error.name)) {
+      return res.status(403).json({ error: 'Token invalido o expirado.' });
+    }
+    logger.error({ err: error }, 'Error al validar la sesion');
+    return res.status(500).json({ error: 'No se pudo validar la sesion.' });
+  }
 };
 
 // Middleware para restringir accesos según el rol
@@ -205,14 +210,16 @@ const authorizePermissions = (...allowedPermissions) => {
     }
 
     try {
-      const permissions = await getUserPermissions(req.user.id_rol);
+      // authenticateToken ya obtuvo los permisos actuales desde la base.
+      const permissions = req.user.permissions || [];
+
       const allowed = allowedPermissions.some((permission) => permissions.includes(permission));
       if (!allowed) {
         return res.status(403).json({ error: 'Acceso denegado. No tienes permisos para esta accion.' });
       }
       next();
     } catch (error) {
-      console.error('Error al validar permisos:', error);
+      logger.error({ err: error }, 'Error al validar permisos');
       res.status(500).json({ error: 'Error al validar permisos del usuario.' });
     }
   };
@@ -220,13 +227,7 @@ const authorizePermissions = (...allowedPermissions) => {
 
 // 2. Obtener datos del usuario actual (GET /api/auth/me)
 router.get('/me', authenticateToken, async (req, res) => {
-  try {
-    const permissions = await getUserPermissions(req.user.id_rol);
-    res.json({ user: { ...req.user, permissions } });
-  } catch (error) {
-    console.error('Error al consultar permisos del usuario:', error);
-    res.json({ user: req.user });
-  }
+  res.json({ user: req.user });
 });
 
 module.exports = {

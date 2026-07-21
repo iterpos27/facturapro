@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import ProductSearchInput from '../../../../shared/ProductSearchInput';
+import { apiFetch } from '../../../../lib/api';
 import {
   todayValue,
   getClientId,
@@ -39,6 +40,34 @@ export default function ProformaFormModal({
   // Lookup modal de cliente
   const [showClientLookup, setShowClientLookup] = useState(false);
   const [clientLookupQuery, setClientLookupQuery] = useState('');
+  const [clientLookupResults, setClientLookupResults] = useState([]);
+  const [clientLookupLoading, setClientLookupLoading] = useState(false);
+
+  // Búsqueda asíncrona con debounce para el modal de clientes
+  useEffect(() => {
+    const query = clientLookupQuery.trim();
+    if (query.length < 2) {
+      setClientLookupResults([]);
+      return;
+    }
+
+    setClientLookupLoading(true);
+    const delayDebounceFn = setTimeout(async () => {
+      try {
+        const response = await apiFetch(`/api/clients?search=${encodeURIComponent(query)}&limit=20`);
+        if (response.ok) {
+          const result = await response.json();
+          setClientLookupResults(Array.isArray(result.data) ? result.data : (Array.isArray(result) ? result : []));
+        }
+      } catch (error) {
+        console.error('Error al buscar clientes:', error);
+      } finally {
+        setClientLookupLoading(false);
+      }
+    }, 300);
+
+    return () => clearTimeout(delayDebounceFn);
+  }, [clientLookupQuery]);
 
   // Búsqueda de productos
   const [productId, setProductId] = useState('');
@@ -97,18 +126,7 @@ export default function ProformaFormModal({
     return Number.isFinite(diff) && diff > 0 ? diff : 0;
   }, [validUntil]);
 
-  const clientLookupResults = useMemo(() => {
-    const query = clientLookupQuery.trim().toLowerCase();
-    if (query.length < 2) return [];
 
-    return clients
-      .filter((client) => {
-        const name = getClientName(client).toLowerCase();
-        const identification = getClientIdentification(client).toLowerCase();
-        return name.includes(query) || identification.includes(query);
-      })
-      .slice(0, 20);
-  }, [clients, clientLookupQuery]);
 
   // Cálculos consolidados en tiempo real para el formulario
   const totals = useMemo(() => {
@@ -147,7 +165,7 @@ export default function ProformaFormModal({
     };
   }, [proformaItems]);
 
-  const handleClientCedulaSearch = (value) => {
+  const handleClientCedulaSearch = async (value) => {
     setClientCedulaQuery(value);
     const query = value.trim();
     if (!query) {
@@ -162,6 +180,21 @@ export default function ProformaFormModal({
       setClientId(String(getClientId(foundClient)));
     } else {
       setClientId('');
+      if (query.length >= 9) {
+        try {
+          const response = await apiFetch(`/api/clients?search=${encodeURIComponent(query)}&limit=1`);
+          if (response.ok) {
+            const data = await response.json();
+            const list = Array.isArray(data.data) ? data.data : (Array.isArray(data) ? data : []);
+            const matched = list.find((c) => getClientIdentification(c) === query);
+            if (matched) {
+              setClientId(String(getClientId(matched)));
+            }
+          }
+        } catch (error) {
+          console.error('Error buscando cliente por identificacion:', error);
+        }
+      }
     }
   };
 
@@ -690,7 +723,11 @@ export default function ProformaFormModal({
             </div>
 
             <div className="client-lookup-results">
-              {clientLookupQuery.trim().length < 2 ? (
+              {clientLookupLoading ? (
+                <p className="module-empty-state">
+                  Buscando clientes...
+                </p>
+              ) : clientLookupQuery.trim().length < 2 ? (
                 <p className="module-empty-state">
                   Escribe al menos 2 caracteres para buscar.
                 </p>

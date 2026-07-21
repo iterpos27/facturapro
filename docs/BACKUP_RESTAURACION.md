@@ -85,3 +85,6 @@ Despues de cada backup:
 2. Confirmar que su tamaño es mayor a 0 KB.
 3. Copiarlo a una ubicacion externa o nube segura.
 4. Hacer una restauracion de prueba en una base separada antes de confiarlo a produccion.
+
+El chequeo `npm run preprod:check` considera vencido un respaldo con mas de 26 horas.
+El limite puede ajustarse con `BACKUP_MAX_AGE_HOURS`.

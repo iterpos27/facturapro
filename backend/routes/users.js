@@ -3,6 +3,7 @@ const router = express.Router();
 const db = require('../db');
 const bcrypt = require('bcryptjs');
 const { authenticateToken } = require('./auth');
+const { validate, schemas } = require('../middleware/validate');
 
 // Proteger todas las rutas del enrutador de usuarios
 router.use(authenticateToken);
@@ -35,7 +36,7 @@ router.get('/roles', async (req, res) => {
 });
 
 // 3. Crear usuario (POST /api/users)
-router.post('/', async (req, res) => {
+router.post('/', validate(schemas.createUser), async (req, res) => {
   const { username, email, password, id_rol, activo } = req.body;
 
   if (!username || !email || !password || !id_rol) {
@@ -62,7 +63,7 @@ router.post('/', async (req, res) => {
 });
 
 // 4. Actualizar usuario (PUT /api/users/:id)
-router.put('/:id', async (req, res) => {
+router.put('/:id', validate(schemas.updateUser), async (req, res) => {
   const { id } = req.params;
   const { username, email, password, id_rol, activo } = req.body;
 

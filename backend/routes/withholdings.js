@@ -5,7 +5,11 @@ const { writeAudit } = require('../utils/audit');
 const { generarClaveAccesoSRI } = require('../utils/sri_utils');
 const { authenticateToken, authorizePermissions } = require('./auth');
 const { validate, schemas } = require('../middleware/validate');
+const { redactCompany } = require('../utils/secrets');
 const { formatDocumentNumber, getDefaultBranch, nextDocumentSequential } = require('../services/sequential_service');
+const WITHHOLDING_PERCENT_BY_CODE = {
+  312: 2.00,
+};
 
 // Proteger todas las rutas de retenciones con autenticación y autorización
 router.use(authenticateToken);
@@ -67,7 +71,7 @@ router.get('/:id', async (req, res) => {
     res.json({
       withholding: retRes.rows[0],
       details: detallesRes.rows,
-      company: companyRes.rows[0] || null,
+      company: redactCompany(companyRes.rows[0]),
     });
   } catch (error) {
     console.error('Error al obtener detalle de retención:', error);
@@ -76,7 +80,7 @@ router.get('/:id', async (req, res) => {
 });
 
 // 3. Emitir Comprobante de Retención (POST /api/withholdings)
-router.post('/', async (req, res) => {
+router.post('/', validate(schemas.createWithholding), async (req, res) => {
   const { id_compra, details } = req.body || {};
   const id_usuario = req.user.id_usuario;
 
@@ -131,6 +135,12 @@ router.post('/', async (req, res) => {
     // 4. Insertar detalles de retención
     for (const d of details) {
       const { impuesto, codigo_sri, porcentaje, base_imponible, valor_retenido } = d;
+      const normalizedCode = String(codigo_sri || '').trim();
+      const base = parseFloat(base_imponible) || 0;
+      const normalizedPercent = WITHHOLDING_PERCENT_BY_CODE[normalizedCode] ?? parseFloat(porcentaje);
+      const normalizedValue = WITHHOLDING_PERCENT_BY_CODE[normalizedCode] !== undefined
+        ? base * (normalizedPercent / 100)
+        : parseFloat(valor_retenido);
 
       await client.query(`
         INSERT INTO retencion_detalles (id_retencion, impuesto, codigo_sri, porcentaje, base_imponible, valor_retenido)
@@ -138,10 +148,10 @@ router.post('/', async (req, res) => {
       `, [
         withholding.id_retencion,
         impuesto,
-        codigo_sri,
-        parseFloat(porcentaje),
-        parseFloat(base_imponible),
-        parseFloat(valor_retenido),
+        normalizedCode,
+        normalizedPercent,
+        base,
+        normalizedValue,
       ]);
     }
 
@@ -168,7 +178,7 @@ router.post('/', async (req, res) => {
   }
 });
 
-router.put('/:id/cancel', authorizePermissions('DOCUMENT_CANCEL'), async (req, res) => {
+router.put('/:id/cancel', authorizePermissions('DOCUMENT_CANCEL'), validate(schemas.cancelDoc), async (req, res) => {
   const { id } = req.params;
   const { reason } = req.body || {};
   const id_usuario = req.user.id_usuario;

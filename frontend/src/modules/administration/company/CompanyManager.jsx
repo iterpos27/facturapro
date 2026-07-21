@@ -13,6 +13,7 @@ export default function CompanyManager() {
   const [direccionMatriz, setDireccionMatriz] = useState('');
   const [obligadoContabilidad, setObligadoContabilidad] = useState(false);
   const [contribuyenteEspecial, setContribuyenteEspecial] = useState('');
+  const [agenteRetencion, setAgenteRetencion] = useState('');
   const [regimen, setRegimen] = useState('RIMPE');
   const [logoUrl, setLogoUrl] = useState('');
   const [ambienteSri, setAmbienteSri] = useState('PRUEBAS');
@@ -46,13 +47,15 @@ export default function CompanyManager() {
         setDireccionMatriz(data.direccion_matriz);
         setObligadoContabilidad(data.obligado_contabilidad);
         setContribuyenteEspecial(data.contribuyente_especial || '');
+        setAgenteRetencion(data.agente_retencion || '');
         setRegimen(data.regimen || 'RIMPE');
         setLogoUrl(data.logo_url || '');
         setAmbienteSri(data.ambiente_sri || 'PRUEBAS');
         setTipoEmision(data.tipo_emision || 'NORMAL');
         setCertificadoPath(data.certificado_path || '');
         setCertificadoAlias(data.certificado_alias || '');
-        setCertificadoClave(data.certificado_clave || '');
+        // La API nunca devuelve la clave. Un valor vacio conserva la clave ya almacenada.
+        setCertificadoClave('');
         setSriEndpointRecepcion(data.sri_endpoint_recepcion || '');
         setSriEndpointAutorizacion(data.sri_endpoint_autorizacion || '');
       }
@@ -103,6 +106,7 @@ export default function CompanyManager() {
       direccion_matriz: direccionMatriz,
       obligado_contabilidad: obligadoContabilidad,
       contribuyente_especial: contribuyenteEspecial,
+      agente_retencion: agenteRetencion,
       regimen,
       logo_url: logoUrl,
       ambiente_sri: ambienteSri,
@@ -443,6 +447,22 @@ export default function CompanyManager() {
                       value={contribuyenteEspecial}
                       onChange={(e) => setContribuyenteEspecial(e.target.value)}
                       placeholder="ej: Resolución No. 1234 (Dejar vacío si no aplica)"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Fila 5: Agente de Retención */}
+              <div className="row align-items-center mb-4">
+                <div className="col-md-6">
+                  <div className="form-group">
+                    <label className="form-label fw-semibold text-secondary">No. Resolución Agente de Retención</label>
+                    <input
+                      type="text"
+                      className="form-control"
+                      value={agenteRetencion}
+                      onChange={(e) => setAgenteRetencion(e.target.value)}
+                      placeholder="ej: Resolución No. 0001 (Dejar vacío si no aplica)"
                     />
                   </div>
                 </div>

@@ -111,7 +111,13 @@ export function useAppState() {
     setTheme((current) => (current === 'light' ? 'dark' : 'light'));
 
   const toggleMenuSection = (section) =>
-    setMenuOpen((current) => ({ ...current, [section]: !current[section] }));
+    setMenuOpen((current) => {
+      const nextOpen = !current[section];
+      return Object.keys(DEFAULT_MENU_STATE).reduce((next, key) => {
+        next[key] = key === section ? nextOpen : false;
+        return next;
+      }, {});
+    });
 
   const handleNavigate = (path) => {
     if (window.innerWidth < 768) setSidebarVisible(false);

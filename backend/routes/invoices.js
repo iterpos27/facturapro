@@ -5,12 +5,14 @@ const { authenticateToken, authorizePermissions } = require('./auth');
 const { writeAudit } = require('../utils/audit');
 const { generarClaveAccesoSRI } = require('../utils/sri_utils');
 const { validate, schemas } = require('../middleware/validate');
+const { redactCompany } = require('../utils/secrets');
 const { formatDocumentNumber, getDefaultBranch, nextDocumentSequential } = require('../services/sequential_service');
 const { recordInventoryCostMovement } = require('../services/inventory_costing');
+const logger = require('../utils/logger');
 
 router.use(authenticateToken);
 
-router.get('/', async (req, res) => {
+router.get('/', authorizePermissions('INVOICES_CRUD'), async (req, res) => {
   const page  = Math.max(parseInt(req.query.page  || '1',  10), 1);
   const limit = Math.min(parseInt(req.query.limit || '50', 10), 200);
   const offset = (page - 1) * limit;
@@ -29,54 +31,73 @@ router.get('/', async (req, res) => {
     const total = parseInt(countRes.rows[0].count, 10);
     res.json({ data: dataRes.rows, total, page, limit, pages: Math.ceil(total / limit) });
   } catch (error) {
-    console.error('Error al obtener facturas:', error);
+    logger.error({ err: error }, 'Error al obtener facturas');
     res.status(500).json({ error: 'Error al consultar facturas emitidas.' });
   }
 });
 
 // Obtener facturas con saldo pendiente (Cuentas por Cobrar)
-router.get('/receivables', async (req, res) => {
+// Optimizado: CTEs + LEFT JOINs en lugar de subconsultas correlacionadas por fila
+router.get('/receivables', authorizePermissions('RECEIVABLES_CRUD'), async (req, res) => {
   try {
     const result = await db.query(`
-      SELECT f.*, c.name as cliente_nombre, c.identification_number as cliente_identificacion, c.phone as cliente_telefono, u.username,
-             CASE
-               WHEN COALESCE(f.saldo, 0) <= 0 THEN 'PAGADA'
-               WHEN f.fecha_vencimiento IS NOT NULL AND f.fecha_vencimiento < CURRENT_DATE THEN 'VENCIDA'
-               WHEN EXISTS (
-                 SELECT 1 FROM factura_cobros fc WHERE fc.id_factura = f.id_factura
-               ) THEN 'ABONADA'
-               ELSE COALESCE(f.estado_cobranza, 'PENDIENTE')
-             END AS estado_cobranza_actual,
-             CASE
-               WHEN f.fecha_vencimiento IS NULL THEN 0
-               ELSE GREATEST((CURRENT_DATE - f.fecha_vencimiento), 0)
-             END AS dias_vencidos,
-             (
-               SELECT fg.fecha_compromiso
-               FROM factura_gestiones_cobranza fg
-               WHERE fg.id_factura = f.id_factura AND fg.estado = 'ABIERTA'
-               ORDER BY fg.fecha_compromiso ASC NULLS LAST, fg.created_at DESC
-               LIMIT 1
-             ) AS proxima_gestion,
-             (
-               SELECT COUNT(*)::int
-               FROM factura_gestiones_cobranza fg
-               WHERE fg.id_factura = f.id_factura
-             ) AS gestiones_count
+      WITH proximas_gestiones AS (
+        SELECT DISTINCT ON (fg.id_factura)
+          fg.id_factura,
+          fg.fecha_compromiso
+        FROM factura_gestiones_cobranza fg
+        WHERE fg.estado = 'ABIERTA'
+        ORDER BY fg.id_factura, fg.fecha_compromiso ASC NULLS LAST, fg.created_at DESC
+      ),
+      conteo_gestiones AS (
+        SELECT id_factura, COUNT(*)::int AS gestiones_count
+        FROM factura_gestiones_cobranza
+        GROUP BY id_factura
+      )
+      SELECT
+        f.*,
+        c.name                 AS cliente_nombre,
+        c.identification_number AS cliente_identificacion,
+        c.phone                AS cliente_telefono,
+        u.username,
+        CASE
+          WHEN COALESCE(f.saldo, 0) <= 0 THEN 'PAGADA'
+          WHEN f.fecha_vencimiento IS NOT NULL AND f.fecha_vencimiento < CURRENT_DATE THEN 'VENCIDA'
+          WHEN EXISTS (
+            SELECT 1 FROM factura_cobros fc WHERE fc.id_factura = f.id_factura
+          ) THEN 'ABONADA'
+          ELSE COALESCE(f.estado_cobranza, 'PENDIENTE')
+        END AS estado_cobranza_actual,
+        CASE
+          WHEN f.fecha_vencimiento IS NULL THEN 0
+          ELSE GREATEST((CURRENT_DATE - f.fecha_vencimiento), 0)
+        END AS dias_vencidos,
+        pg.fecha_compromiso   AS proxima_gestion,
+        COALESCE(cg.gestiones_count, 0) AS gestiones_count
       FROM facturas f
       JOIN clients c ON f.id_cliente = c.id
       LEFT JOIN usuarios u ON f.id_usuario = u.id_usuario
-      WHERE f.estado = 'EMITIDA' AND f.saldo > 0
-      ORDER BY f.fecha_vencimiento ASC NULLS LAST, f.fecha_emision DESC
+      LEFT JOIN proximas_gestiones pg ON pg.id_factura = f.id_factura
+      LEFT JOIN conteo_gestiones  cg ON cg.id_factura = f.id_factura
+      WHERE f.estado = 'EMITIDA'
+        AND (
+          COALESCE(f.saldo, 0) > 0
+          OR f.tipo_venta = 'CREDITO'
+          OR EXISTS (SELECT 1 FROM factura_cobros fc WHERE fc.id_factura = f.id_factura)
+        )
+      ORDER BY
+        CASE WHEN COALESCE(f.saldo, 0) > 0 THEN 0 ELSE 1 END,
+        f.fecha_vencimiento ASC NULLS LAST,
+        f.fecha_emision DESC
     `);
     res.json(result.rows);
   } catch (error) {
-    console.error('Error al obtener cuentas por cobrar:', error);
+    logger.error({ err: error }, 'Error al obtener cuentas por cobrar');
     res.status(500).json({ error: 'Error al consultar las cuentas por cobrar.' });
   }
 });
 
-router.get('/:id', async (req, res) => {
+router.get('/:id', authorizePermissions('INVOICES_CRUD'), async (req, res) => {
   try {
     const invoiceRes = await db.query(`
       SELECT f.*, c.name as cliente_nombre, c.identification_number as cliente_identificacion,
@@ -147,7 +168,7 @@ router.get('/:id', async (req, res) => {
       payments: paymentsRes.rows,
       cobros: cobrosRes.rows,
       gestiones: gestionesRes.rows,
-      company: companyRes.rows[0] || null,
+      company: redactCompany(companyRes.rows[0]),
     });
   } catch (error) {
     console.error('Error al obtener detalle de factura:', error);
@@ -155,7 +176,7 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-router.post('/', validate(schemas.createInvoice), async (req, res) => {
+router.post('/', authorizePermissions('INVOICES_CRUD'), validate(schemas.createInvoice), async (req, res) => {
   const {
     id_cliente,
     id_metodo_pago,
@@ -229,6 +250,18 @@ router.post('/', validate(schemas.createInvoice), async (req, res) => {
     let valorIvaTotal = 0;
     const detailLines = [];
 
+    // ── Prefetch de productos: 1 sola query para todos los ítems ──────────────
+    // Evita el cuello de botella N+1 (antes: 1 query por ítem dentro de la TX)
+    const productIds = [...new Set(items.map((item) => Number(item.id_producto)))];
+    const productRes = await client.query(`
+      SELECT p.id_producto, p.nombre, p.stock_actual, p.id_impuesto, i.porcentaje, i.nombre as impuesto_nombre
+      FROM productos p
+      JOIN impuestos i ON p.id_impuesto = i.id_impuesto
+      WHERE p.id_producto = ANY($1::int[])
+    `, [productIds]);
+
+    const productMap = new Map(productRes.rows.map((p) => [p.id_producto, p]));
+
     for (const item of items) {
       const idProducto = item.id_producto;
       const cantVal = parseFloat(item.cantidad) || 0;
@@ -240,17 +273,11 @@ router.post('/', validate(schemas.createInvoice), async (req, res) => {
         throw new Error('Cada detalle debe tener producto, cantidad, precio y descuento validos.');
       }
 
-      const prodRes = await client.query(`
-        SELECT p.nombre, p.stock_actual, p.id_impuesto, i.porcentaje, i.nombre as impuesto_nombre
-        FROM productos p
-        JOIN impuestos i ON p.id_impuesto = i.id_impuesto
-        WHERE p.id_producto = $1
-      `, [idProducto]);
-      if (prodRes.rows.length === 0) {
+      const product = productMap.get(Number(idProducto));
+      if (!product) {
         throw new Error(`Producto con ID ${idProducto} no encontrado.`);
       }
 
-      const product = prodRes.rows[0];
       const stockActual = parseFloat(product.stock_actual);
       if (stockActual < cantVal) {
         throw new Error(`Stock insuficiente para "${product.nombre}". Disponible: ${stockActual}, Requerido: ${cantVal}`);
@@ -287,6 +314,16 @@ router.post('/', validate(schemas.createInvoice), async (req, res) => {
     }
 
     const totalFactura = Math.max(subtotalSinImpuestos + valorIvaTotal - descuentoTotal, 0);
+
+    const clientDataRes = await client.query('SELECT identification_number FROM clients WHERE id = $1', [id_cliente]);
+    if (clientDataRes.rows.length === 0) {
+      throw new Error('El cliente seleccionado no existe.');
+    }
+    const clientIdent = clientDataRes.rows[0].identification_number;
+    if (clientIdent === '9999999999999' && totalFactura > 50.00) {
+      throw new Error('Las facturas a Consumidor Final no pueden superar los $50.00. Ingrese los datos de identificación del comprador.');
+    }
+
     const anticipoVal = Math.max(parseFloat(anticipo) || 0, 0);
     const pagoVal = normalizedPayments.length > 0
       ? normalizedPayments.reduce((sum, payment) => sum + payment.monto, 0)
@@ -429,7 +466,7 @@ router.post('/', validate(schemas.createInvoice), async (req, res) => {
   }
 });
 
-router.put('/:id/cancel', authorizePermissions('DOCUMENT_CANCEL'), async (req, res) => {
+router.put('/:id/cancel', authorizePermissions('INVOICES_CRUD'), authorizePermissions('DOCUMENT_CANCEL'), validate(schemas.cancelDoc), async (req, res) => {
   const { id } = req.params;
   const { reason } = req.body;
   const id_usuario = req.user.id_usuario;
@@ -495,7 +532,7 @@ router.put('/:id/cancel', authorizePermissions('DOCUMENT_CANCEL'), async (req, r
 });
 
 // Registrar un abono (cobro) a una factura con saldo pendiente (Cuentas por Cobrar)
-router.post('/:id/payments', async (req, res) => {
+router.post('/:id/payments', authorizePermissions('RECEIVABLES_CRUD'), validate(schemas.registerPayment), async (req, res) => {
   const { id } = req.params;
   const { id_metodo_pago, monto, referencia } = req.body || {};
   const id_usuario = req.user.id_usuario;
@@ -585,7 +622,7 @@ router.post('/:id/payments', async (req, res) => {
   }
 });
 
-router.get('/:id/collections', async (req, res) => {
+router.get('/:id/collections', authorizePermissions('RECEIVABLES_CRUD'), async (req, res) => {
   try {
     const result = await db.query(`
       SELECT fg.*, u.username
@@ -601,7 +638,7 @@ router.get('/:id/collections', async (req, res) => {
   }
 });
 
-router.post('/:id/collections', async (req, res) => {
+router.post('/:id/collections', authorizePermissions('RECEIVABLES_CRUD'), validate(schemas.createCollectionAction), async (req, res) => {
   const { id } = req.params;
   const { tipo_gestion, nota, fecha_compromiso, monto_compromiso, estado } = req.body || {};
   const id_usuario = req.user.id_usuario;

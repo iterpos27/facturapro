@@ -11,10 +11,23 @@ import {
 import { apiFetch, apiUrl } from '../../../lib/api';
 import { printDocument } from '../../../lib/printDocument';
 import { openRidePdf } from '../../../lib/rides';
+import { escapeHtml, sriResultHtml } from '../../../lib/sriMessages';
 import DocumentActionButtons from '../../../shared/DocumentActionButtons';
 import WithholdingRideModal from './WithholdingRideModal';
 
 const money = (value) => (parseFloat(value || 0) || 0).toFixed(2);
+const RENT_WITHHOLDING_CODE = '312';
+const RENT_WITHHOLDING_PERCENT = 2.00;
+const IVA_WITHHOLDING_CODE = '725';
+const IVA_WITHHOLDING_PERCENT = 30.00;
+
+const createRentWithholdingRow = (base = 0) => ({
+  impuesto: 'RENTA',
+  codigo_sri: RENT_WITHHOLDING_CODE,
+  porcentaje: RENT_WITHHOLDING_PERCENT,
+  base_imponible: base,
+  valor_retenido: base * (RENT_WITHHOLDING_PERCENT / 100),
+});
 
 const getSriBadgeClass = (estado) => {
   const value = String(estado || 'PENDIENTE').toUpperCase();
@@ -50,7 +63,7 @@ export default function WithholdingsManager() {
   const [selectedPurchaseData, setSelectedPurchaseData] = useState(null);
   const [loadingPurchase, setLoadingPurchase] = useState(false);
   const [withholdingRows, setWithholdingRows] = useState([
-    { impuesto: 'RENTA', codigo_sri: '312', porcentaje: 1.75, base_imponible: 0, valor_retenido: 0 },
+    createRentWithholdingRow(),
   ]);
 
   useEffect(() => {
@@ -81,7 +94,8 @@ export default function WithholdingsManager() {
     try {
       const response = await apiFetch('/api/purchases');
       if (response.ok) {
-        const data = await response.json();
+        const result = await response.json();
+        const data = Array.isArray(result) ? result : (result.data || []);
         // Filtramos para retener solo compras registradas
         setPurchases(data.filter((p) => p.estado === 'REGISTRADA'));
       }
@@ -100,9 +114,7 @@ export default function WithholdingsManager() {
 
       // Pre-cargar primera línea de retención con el subtotal de la compra como base imponible
       const subtotalTotal = parseFloat(data.purchase.subtotal_con_iva) + parseFloat(data.purchase.subtotal_iva_cero);
-      setWithholdingRows([
-        { impuesto: 'RENTA', codigo_sri: '312', porcentaje: 1.75, base_imponible: subtotalTotal, valor_retenido: subtotalTotal * 0.0175 },
-      ]);
+      setWithholdingRows([createRentWithholdingRow(subtotalTotal)]);
     } catch (error) {
       Swal.fire('Error', error.message, 'error');
       setSelectedPurchaseId('');
@@ -152,15 +164,22 @@ export default function WithholdingsManager() {
     // Configurar valores SRI por defecto si cambia impuesto
     if (field === 'impuesto') {
       if (value === 'RENTA') {
-        nextRows[index].codigo_sri = '312';
-        nextRows[index].porcentaje = 1.75;
+        nextRows[index].codigo_sri = RENT_WITHHOLDING_CODE;
+        nextRows[index].porcentaje = RENT_WITHHOLDING_PERCENT;
       } else {
-        nextRows[index].codigo_sri = '725'; // retencion 30% IVA
-        nextRows[index].porcentaje = 30.00;
+        nextRows[index].codigo_sri = IVA_WITHHOLDING_CODE; // retencion 30% IVA
+        nextRows[index].porcentaje = IVA_WITHHOLDING_PERCENT;
       }
       const base = parseFloat(nextRows[index].base_imponible) || 0;
       const pct = parseFloat(nextRows[index].porcentaje) || 0;
       nextRows[index].valor_retenido = base * (pct / 100);
+    }
+
+    if (field === 'codigo_sri' && value === RENT_WITHHOLDING_CODE) {
+      nextRows[index].impuesto = 'RENTA';
+      nextRows[index].porcentaje = RENT_WITHHOLDING_PERCENT;
+      const base = parseFloat(nextRows[index].base_imponible) || 0;
+      nextRows[index].valor_retenido = base * (RENT_WITHHOLDING_PERCENT / 100);
     }
 
     setWithholdingRows(nextRows);
@@ -173,14 +192,14 @@ export default function WithholdingsManager() {
 
     setWithholdingRows((current) => [
       ...current,
-      { impuesto: 'RENTA', codigo_sri: '312', porcentaje: 1.75, base_imponible: subtotalTotal, valor_retenido: subtotalTotal * 0.0175 },
+      createRentWithholdingRow(subtotalTotal),
     ]);
   };
 
   const handleRemoveRow = (index) => {
     setWithholdingRows((current) =>
       current.length === 1
-        ? [{ impuesto: 'RENTA', codigo_sri: '312', porcentaje: 1.75, base_imponible: 0, valor_retenido: 0 }]
+        ? [createRentWithholdingRow()]
         : current.filter((_, idx) => idx !== index)
     );
   };
@@ -238,7 +257,7 @@ export default function WithholdingsManager() {
       await Swal.fire({
         icon: 'success',
         title: 'XML SRI generado',
-        html: `<div class="text-start"><strong>Estado:</strong> ${data.estado}<br/><strong>Clave:</strong><br/><small>${data.clave_acceso}</small></div>`,
+        html: `<div class="sri-result-dialog"><div><strong>Estado:</strong> ${escapeHtml(data.estado)}</div><div><strong>Clave:</strong></div><div class="sri-result-key">${escapeHtml(data.clave_acceso)}</div></div>`,
       });
       fetchWithholdings();
     } catch (error) {
@@ -253,11 +272,10 @@ export default function WithholdingsManager() {
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'No se pudo procesar la retencion en SRI.');
-      const messages = (data.mensajes || []).map((msg) => `<li>${msg.mensaje || msg.informacionAdicional || JSON.stringify(msg)}</li>`).join('');
       await Swal.fire({
         icon: data.estado === 'AUTORIZADO' ? 'success' : 'info',
         title: 'SRI Pruebas',
-        html: `<div class="text-start"><strong>Estado:</strong> ${data.estado}<br/><strong>Ambiente:</strong> ${data.ambiente}<br/><strong>Clave:</strong><br/><small>${data.clave_acceso}</small>${messages ? `<ul class="mt-2">${messages}</ul>` : ''}</div>`,
+        html: sriResultHtml(data),
       });
       fetchWithholdings();
     } catch (error) {

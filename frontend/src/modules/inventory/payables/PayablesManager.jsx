@@ -3,6 +3,12 @@ import Swal from 'sweetalert2';
 import { apiFetch } from '../../../lib/api';
 
 const money = (value) => (parseFloat(value || 0) || 0).toFixed(2);
+const numberValue = (value) => parseFloat(value || 0) || 0;
+const formatDateTime = (value) => {
+  if (!value) return 'Sin fecha';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? 'Sin fecha' : date.toLocaleString();
+};
 
 const getPaymentBadge = (status) => {
   const value = String(status || 'PENDIENTE').toUpperCase();
@@ -11,6 +17,8 @@ const getPaymentBadge = (status) => {
   if (value === 'ABONADA') return 'bg-warning text-dark';
   return 'bg-secondary';
 };
+
+const isPending = (item) => Number(item.saldo || 0) > 0;
 
 export default function PayablesManager() {
   const [payables, setPayables] = useState([]);
@@ -21,6 +29,8 @@ export default function PayablesManager() {
   const [method, setMethod] = useState('EFECTIVO');
   const [reference, setReference] = useState('');
   const [saving, setSaving] = useState(false);
+  const [historyDetail, setHistoryDetail] = useState(null);
+  const [loadingHistory, setLoadingHistory] = useState(false);
 
   const fetchPayables = async () => {
     setLoading(true);
@@ -93,6 +103,19 @@ export default function PayablesManager() {
     }
   };
 
+  const openHistory = async (purchase) => {
+    setLoadingHistory(true);
+    try {
+      const response = await apiFetch(`/api/purchases/${purchase.id_compra}`);
+      if (!response.ok) throw new Error('No se pudo cargar el historico de pagos.');
+      setHistoryDetail(await response.json());
+    } catch (error) {
+      Swal.fire('Error', error.message, 'error');
+    } finally {
+      setLoadingHistory(false);
+    }
+  };
+
   return (
     <div className="module-shell">
       <div className="view-header module-header-card d-flex align-items-center justify-content-between">
@@ -102,7 +125,7 @@ export default function PayablesManager() {
             Controla compras a credito, vencimientos y pagos a proveedores.
           </p>
         </div>
-        <span className="count-badge-pill">{filteredPayables.length} pendientes</span>
+        <span className="count-badge-pill">{filteredPayables.filter(isPending).length} pendientes</span>
       </div>
 
       <div className="search-bar-container mt-1">
@@ -131,7 +154,7 @@ export default function PayablesManager() {
                 <th className="text-end">Total</th>
                 <th className="text-end">Pagado</th>
                 <th className="text-end">Saldo</th>
-                <th style={{ width: '150px' }}>Acciones</th>
+                <th style={{ width: '240px' }}>Acciones</th>
               </tr>
             </thead>
             <tbody>
@@ -153,9 +176,14 @@ export default function PayablesManager() {
                   <td className="text-end">${money(item.monto_pagado)}</td>
                   <td className="text-end fw-bold text-danger">${money(item.saldo)}</td>
                   <td>
-                    <button className="btn btn-primary btn-sm" onClick={() => openPayment(item)}>
-                      Registrar pago
-                    </button>
+                    <div className="d-flex flex-wrap gap-2">
+                      <button className="btn btn-primary btn-sm" onClick={() => openPayment(item)} disabled={!isPending(item)}>
+                        Registrar pago
+                      </button>
+                      <button className="btn btn-secondary btn-sm" onClick={() => openHistory(item)} disabled={loadingHistory}>
+                        Historial
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -202,6 +230,73 @@ export default function PayablesManager() {
           </div>
         </div>
       )}
+
+      {historyDetail && (
+        <PurchasePaymentHistoryModal
+          detail={historyDetail}
+          onClose={() => setHistoryDetail(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+function PurchasePaymentHistoryModal({ detail, onClose }) {
+  const purchase = detail.purchase || {};
+  const rows = (detail.payments || []).length > 0
+    ? detail.payments
+    : numberValue(purchase.monto_pagado) > 0
+      ? [{
+          id_pago: 'reconstruido',
+          fecha_pago: purchase.fecha_compra || purchase.created_at,
+          metodo_pago: 'Registrado',
+          referencia: 'Reconstruido desde el total pagado de la compra',
+          username: purchase.username,
+          monto: purchase.monto_pagado,
+        }]
+      : [];
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-container modal-container-clean compact-modal payment-history-modal" onClick={(event) => event.stopPropagation()}>
+        <button className="modal-close-btn" onClick={onClose} aria-label="Cerrar modal">X</button>
+        <h2 className="text-dark fw-bold">Historial de pagos CxP</h2>
+        <p className="modal-support-copy">
+          {purchase.numero_factura_compra} - {purchase.proveedor_nombre}
+        </p>
+
+        <div className="payment-history-summary">
+          <span>Total <strong>${money(purchase.total)}</strong></span>
+          <span>Pagado <strong>${money(purchase.monto_pagado)}</strong></span>
+          <span>Saldo <strong>${money(purchase.saldo)}</strong></span>
+        </div>
+
+        <div className="table-responsive">
+          <table className="table table-sm table-striped align-middle mb-0">
+            <thead>
+              <tr>
+                <th>Fecha</th>
+                <th>Metodo</th>
+                <th>Referencia</th>
+                <th>Usuario</th>
+                <th className="text-end">Monto</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.length === 0 ? (
+                <tr><td colSpan="5" className="text-center text-muted">Esta compra no tiene pagos registrados.</td></tr>
+              ) : rows.map((row) => (
+                <tr key={row.id_pago}>
+                  <td>{formatDateTime(row.fecha_pago)}</td>
+                  <td>{row.metodo_pago || 'Sin metodo'}</td>
+                  <td>{row.referencia || '-'}</td>
+                  <td>{row.username || '-'}</td>
+                  <td className="text-end fw-bold">${money(row.monto)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
   );
 }

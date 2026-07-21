@@ -68,7 +68,7 @@ export default function PurchaseManager() {
     try {
       const [suppRes, prodRes] = await Promise.all([
         apiFetch('/api/suppliers'),
-        apiFetch('/api/products'),
+        apiFetch('/api/products?limit=500&page=1&activo=true'),
       ]);
 
       if (suppRes.ok) {
@@ -81,7 +81,8 @@ export default function PurchaseManager() {
 
       if (prodRes.ok) {
         const data = await prodRes.json();
-        setProducts(data.filter((p) => p.activo));
+        const list = Array.isArray(data) ? data : (data.data || []);
+        setProducts(list.filter((p) => p.activo));
       }
     } catch (error) {
       console.error(error);

@@ -75,6 +75,7 @@ npm run dev
 Backend:
 
 - `npm start`
+- `npm test`
 - `npm run db:migrate:all`
 - `npm run db:migrate:sri-test`
 - `npm run db:migrate:sri-complementary`
@@ -85,6 +86,7 @@ Backend:
 Frontend:
 
 - `npm run dev`
+- `npm test`
 - `npm run build`
 - `npm run lint`
 - `npm run preview`
@@ -97,6 +99,18 @@ Frontend:
 - `express-rate-limit` para limitar abuso de API.
 - Validacion de payloads con Joi en rutas sensibles.
 - `JWT_SECRET` seguro obligatorio en produccion.
+- Revalidacion de usuario, rol y permisos en cada solicitud autenticada.
+- Cifrado AES-256-GCM de la clave del certificado mediante `DATA_ENCRYPTION_KEY`.
+- La clave del certificado nunca se devuelve en respuestas API.
+- Validacion Joi en los principales endpoints de escritura.
+
+## Controles de calidad
+
+- `npm test` en backend y frontend.
+- `npm run lint` y `npm run build` en frontend.
+- Pipeline GitHub Actions en `.github/workflows/quality.yml`.
+- `npm run preprod:check` valida flujos, empresa unica y antiguedad del ultimo backup.
+- Los reportes se exportan como CSV protegido contra formulas y compatible con Excel.
 
 ## SRI
 

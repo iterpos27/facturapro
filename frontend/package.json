@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "test": "node --test test/*.test.js",
     "build": "vite build",
     "lint": "oxlint",
     "preview": "vite preview"
@@ -17,8 +18,7 @@
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "react-router-dom": "^7.18.1",
-    "sweetalert2": "^11.26.25",
-    "xlsx": "^0.18.5"
+    "sweetalert2": "^11.26.25"
   },
   "devDependencies": {
     "@types/react": "^19.2.17",

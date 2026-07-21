@@ -99,19 +99,21 @@ export default function InvoiceManager({ onRedirectToCash }) {
   const fetchMetadata = async () => {
     try {
       const [cliRes, prodRes, pmRes] = await Promise.all([
-        apiFetch('/api/clients'),
-        apiFetch('/api/products'),
+        apiFetch('/api/clients?limit=500&page=1'),
+        apiFetch('/api/products?limit=500&page=1&activo=true'),
         apiFetch('/api/cash-registers/payment-methods'),
       ]);
 
       if (cliRes.ok) {
         const data = await cliRes.json();
-        setClients(data);
+        // API devuelve { data: [], total, ... }
+        setClients(Array.isArray(data) ? data : (data.data || []));
       }
 
       if (prodRes.ok) {
         const data = await prodRes.json();
-        setProducts(data.filter((p) => p.activo));
+        const list = Array.isArray(data) ? data : (data.data || []);
+        setProducts(list.filter((p) => p.activo));
       }
 
       if (pmRes.ok) {

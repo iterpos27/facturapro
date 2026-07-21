@@ -2,6 +2,8 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 const { authenticateToken } = require('./auth');
+const logger = require('../utils/logger');
+const { validate, schemas } = require('../middleware/validate');
 
 // Proteger todas las rutas de clientes con autenticación
 router.use(authenticateToken);
@@ -58,13 +60,63 @@ function validateRucEcuador(value) {
   return false;
 }
 
-// 1. Obtener todos los clientes (GET /api/clients)
+function validateIdentification(cleanIdentification, res) {
+  if (cleanIdentification === CONSUMIDOR_FINAL_ID || cleanIdentification === '9999999999') return true;
+  if (cleanIdentification.length === 10) {
+    if (!validateCedulaEcuador(cleanIdentification)) {
+      res.status(400).json({ error: 'La cedula ecuatoriana no es valida.' });
+      return false;
+    }
+  } else if (cleanIdentification.length === 13) {
+    if (!validateRucEcuador(cleanIdentification)) {
+      res.status(400).json({ error: 'El RUC ecuatoriano no es valido.' });
+      return false;
+    }
+  } else {
+    if (!/^[a-zA-Z0-9]+$/.test(cleanIdentification)) {
+      res.status(400).json({ error: 'La identificación debe ser alfanumérica válida.' });
+      return false;
+    }
+  }
+  return true;
+}
+
+// 1. Obtener todos los clientes con paginación y búsqueda (GET /api/clients)
+// Query params: page, limit, search (busca en nombre e identificación)
+// Para dropdowns de facturas usar: GET /api/clients?limit=10&search=<term>
 router.get('/', async (req, res) => {
+  const page   = Math.max(parseInt(req.query.page   || '1',   10), 1);
+  const limit  = Math.min(parseInt(req.query.limit  || '50',  10), 500);
+  const offset = (page - 1) * limit;
+  const search = (req.query.search || '').trim();
+
   try {
-    const result = await db.query('SELECT * FROM clients ORDER BY id DESC');
-    res.json(result.rows);
+    const params = [];
+    let whereClause = '';
+
+    if (search) {
+      params.push(`%${search}%`);
+      whereClause = `WHERE name ILIKE $1 OR identification_number ILIKE $1`;
+    }
+
+    const [dataRes, countRes] = await Promise.all([
+      db.query(
+        `SELECT * FROM clients ${whereClause} ORDER BY name ASC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+        [...params, limit, offset]
+      ),
+      db.query(`SELECT COUNT(*) FROM clients ${whereClause}`, params),
+    ]);
+
+    const total = parseInt(countRes.rows[0].count, 10);
+    res.json({
+      data: dataRes.rows,
+      total,
+      page,
+      limit,
+      pages: Math.ceil(total / limit),
+    });
   } catch (error) {
-    console.error('Error al obtener clientes:', error);
+    logger.error({ err: error }, 'Error al obtener clientes');
     res.status(500).json({ error: 'Error al obtener clientes de la base de datos.' });
   }
 });
@@ -79,30 +131,30 @@ router.get('/:id', async (req, res) => {
     }
     res.json(result.rows[0]);
   } catch (error) {
-    console.error('Error al obtener cliente:', error);
+    logger.error({ err: error, id }, 'Error al obtener cliente');
     res.status(500).json({ error: 'Error al obtener el cliente.' });
   }
 });
 
 // 3. Registrar un nuevo cliente (POST /api/clients)
-router.post('/', async (req, res) => {
-  const { 
-    name, 
-    identification_number, 
-    email, 
-    phone, 
-    address, 
-    observation, 
-    person_type 
+router.post('/', validate(schemas.createClient), async (req, res) => {
+  const {
+    name,
+    identification_number,
+    email,
+    phone,
+    address,
+    observation,
+    person_type,
   } = req.body;
 
-  const cleanName = typeof name === 'string' ? name.trim() : '';
+  const cleanName           = typeof name === 'string' ? name.trim() : '';
   const cleanIdentification = typeof identification_number === 'string' ? identification_number.trim() : '';
-  const cleanEmail = typeof email === 'string' ? email.trim().toLowerCase() : '';
-  const cleanPhone = typeof phone === 'string' ? phone.trim() : null;
-  const cleanAddress = typeof address === 'string' ? address.trim() : null;
-  const cleanObservation = typeof observation === 'string' ? observation.trim() : null;
-  const cleanPersonType = person_type === 'JURIDICA' ? 'JURIDICA' : 'NATURAL';
+  const cleanEmail          = typeof email === 'string' ? email.trim().toLowerCase() : '';
+  const cleanPhone          = typeof phone === 'string' ? phone.trim() : null;
+  const cleanAddress        = typeof address === 'string' ? address.trim() : null;
+  const cleanObservation    = typeof observation === 'string' ? observation.trim() : null;
+  const cleanPersonType     = person_type === 'JURIDICA' ? 'JURIDICA' : 'NATURAL';
 
   if (!cleanName || !cleanIdentification || !cleanEmail) {
     return res.status(400).json({ error: 'Nombre, identificacion y correo son obligatorios.' });
@@ -112,40 +164,17 @@ router.post('/', async (req, res) => {
     return res.status(400).json({ error: 'El correo electronico no tiene un formato valido.' });
   }
 
-  if (cleanIdentification !== CONSUMIDOR_FINAL_ID && cleanIdentification !== '9999999999') {
-    if (cleanIdentification.length === 10) {
-      if (!validateCedulaEcuador(cleanIdentification)) {
-        return res.status(400).json({ error: 'La cedula ecuatoriana no es valida.' });
-      }
-    } else if (cleanIdentification.length === 13) {
-      if (!validateRucEcuador(cleanIdentification)) {
-        return res.status(400).json({ error: 'El RUC ecuatoriano no es valido.' });
-      }
-    } else {
-      if (!/^[a-zA-Z0-9]+$/.test(cleanIdentification)) {
-        return res.status(400).json({ error: 'La identificación debe ser alfanumérica válida.' });
-      }
-    }
-  }
+  if (!validateIdentification(cleanIdentification, res)) return;
 
   try {
-    const query = `
-      INSERT INTO clients (name, identification_number, email, phone, address, observation, person_type)
-      VALUES ($1, $2, $3, $4, $5, $6, $7)
-      RETURNING *
-    `;
-    const result = await db.query(query, [
-      cleanName, 
-      cleanIdentification, 
-      cleanEmail, 
-      cleanPhone, 
-      cleanAddress, 
-      cleanObservation, 
-      cleanPersonType
-    ]);
+    const result = await db.query(
+      `INSERT INTO clients (name, identification_number, email, phone, address, observation, person_type)
+       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+      [cleanName, cleanIdentification, cleanEmail, cleanPhone, cleanAddress, cleanObservation, cleanPersonType]
+    );
     res.status(201).json(result.rows[0]);
   } catch (error) {
-    console.error('Error al guardar cliente:', error);
+    logger.error({ err: error }, 'Error al guardar cliente');
     if (error.code === '23505') {
       return res.status(400).json({ error: 'Ya existe un cliente con este número de identificación.' });
     }
@@ -154,25 +183,25 @@ router.post('/', async (req, res) => {
 });
 
 // 4. Modificar los datos de un cliente existente (PUT /api/clients/:id)
-router.put('/:id', async (req, res) => {
+router.put('/:id', validate(schemas.createClient), async (req, res) => {
   const { id } = req.params;
-  const { 
-    name, 
-    identification_number, 
-    email, 
-    phone, 
-    address, 
-    observation, 
-    person_type 
+  const {
+    name,
+    identification_number,
+    email,
+    phone,
+    address,
+    observation,
+    person_type,
   } = req.body;
 
-  const cleanName = typeof name === 'string' ? name.trim() : '';
+  const cleanName           = typeof name === 'string' ? name.trim() : '';
   const cleanIdentification = typeof identification_number === 'string' ? identification_number.trim() : '';
-  const cleanEmail = typeof email === 'string' ? email.trim().toLowerCase() : '';
-  const cleanPhone = typeof phone === 'string' ? phone.trim() : null;
-  const cleanAddress = typeof address === 'string' ? address.trim() : null;
-  const cleanObservation = typeof observation === 'string' ? observation.trim() : null;
-  const cleanPersonType = person_type === 'JURIDICA' ? 'JURIDICA' : 'NATURAL';
+  const cleanEmail          = typeof email === 'string' ? email.trim().toLowerCase() : '';
+  const cleanPhone          = typeof phone === 'string' ? phone.trim() : null;
+  const cleanAddress        = typeof address === 'string' ? address.trim() : null;
+  const cleanObservation    = typeof observation === 'string' ? observation.trim() : null;
+  const cleanPersonType     = person_type === 'JURIDICA' ? 'JURIDICA' : 'NATURAL';
 
   if (!cleanName || !cleanIdentification || !cleanEmail) {
     return res.status(400).json({ error: 'Nombre, identificacion y correo son obligatorios.' });
@@ -182,53 +211,23 @@ router.put('/:id', async (req, res) => {
     return res.status(400).json({ error: 'El correo electronico no tiene un formato valido.' });
   }
 
-  if (cleanIdentification !== CONSUMIDOR_FINAL_ID && cleanIdentification !== '9999999999') {
-    if (cleanIdentification.length === 10) {
-      if (!validateCedulaEcuador(cleanIdentification)) {
-        return res.status(400).json({ error: 'La cedula ecuatoriana no es valida.' });
-      }
-    } else if (cleanIdentification.length === 13) {
-      if (!validateRucEcuador(cleanIdentification)) {
-        return res.status(400).json({ error: 'El RUC ecuatoriano no es valido.' });
-      }
-    } else {
-      if (!/^[a-zA-Z0-9]+$/.test(cleanIdentification)) {
-        return res.status(400).json({ error: 'La identificación debe ser alfanumérica válida.' });
-      }
-    }
-  }
+  if (!validateIdentification(cleanIdentification, res)) return;
 
   try {
-    const query = `
-      UPDATE clients
-      SET name = $1, 
-          identification_number = $2, 
-          email = $3, 
-          phone = $4, 
-          address = $5, 
-          observation = $6, 
-          person_type = $7
-      WHERE id = $8
-      RETURNING *
-    `;
-    const result = await db.query(query, [
-      cleanName, 
-      cleanIdentification, 
-      cleanEmail, 
-      cleanPhone, 
-      cleanAddress, 
-      cleanObservation, 
-      cleanPersonType, 
-      id
-    ]);
+    const result = await db.query(
+      `UPDATE clients
+       SET name = $1, identification_number = $2, email = $3,
+           phone = $4, address = $5, observation = $6, person_type = $7
+       WHERE id = $8 RETURNING *`,
+      [cleanName, cleanIdentification, cleanEmail, cleanPhone, cleanAddress, cleanObservation, cleanPersonType, id]
+    );
 
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Cliente no encontrado.' });
     }
-
     res.json(result.rows[0]);
   } catch (error) {
-    console.error('Error al actualizar cliente:', error);
+    logger.error({ err: error, id }, 'Error al actualizar cliente');
     if (error.code === '23505') {
       return res.status(400).json({ error: 'Ya existe otro cliente con este número de identificación.' });
     }
@@ -246,7 +245,7 @@ router.delete('/:id', async (req, res) => {
     }
     res.json({ message: 'Cliente eliminado correctamente.', id: result.rows[0].id });
   } catch (error) {
-    console.error('Error al eliminar cliente:', error);
+    logger.error({ err: error, id }, 'Error al eliminar cliente');
     res.status(500).json({ error: 'Error al eliminar el cliente.' });
   }
 });

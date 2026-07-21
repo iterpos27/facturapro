@@ -11,6 +11,7 @@ import {
 import { apiFetch, apiUrl } from '../../../lib/api';
 import { printDocument } from '../../../lib/printDocument';
 import { openRidePdf } from '../../../lib/rides';
+import { escapeHtml, sriResultHtml } from '../../../lib/sriMessages';
 import DocumentActionButtons from '../../../shared/DocumentActionButtons';
 import CreditNoteRideModal from './CreditNoteRideModal';
 
@@ -81,7 +82,8 @@ export default function CreditNotesManager() {
     try {
       const response = await apiFetch('/api/invoices');
       if (response.ok) {
-        const data = await response.json();
+        const result = await response.json();
+        const data = Array.isArray(result) ? result : (result.data || []);
         // Solo facturas emitidas son elegibles
         setInvoices(data.filter((f) => f.estado === 'EMITIDA'));
       }
@@ -219,7 +221,7 @@ export default function CreditNotesManager() {
       await Swal.fire({
         icon: 'success',
         title: 'XML SRI generado',
-        html: `<div class="text-start"><strong>Estado:</strong> ${data.estado}<br/><strong>Clave:</strong><br/><small>${data.clave_acceso}</small></div>`,
+        html: `<div class="sri-result-dialog"><div><strong>Estado:</strong> ${escapeHtml(data.estado)}</div><div><strong>Clave:</strong></div><div class="sri-result-key">${escapeHtml(data.clave_acceso)}</div></div>`,
       });
       fetchCreditNotes();
     } catch (error) {
@@ -234,11 +236,10 @@ export default function CreditNotesManager() {
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'No se pudo procesar la nota de credito en SRI.');
-      const messages = (data.mensajes || []).map((msg) => `<li>${msg.mensaje || msg.informacionAdicional || JSON.stringify(msg)}</li>`).join('');
       await Swal.fire({
         icon: data.estado === 'AUTORIZADO' ? 'success' : 'info',
         title: 'SRI Pruebas',
-        html: `<div class="text-start"><strong>Estado:</strong> ${data.estado}<br/><strong>Ambiente:</strong> ${data.ambiente}<br/><strong>Clave:</strong><br/><small>${data.clave_acceso}</small>${messages ? `<ul class="mt-2">${messages}</ul>` : ''}</div>`,
+        html: sriResultHtml(data),
       });
       fetchCreditNotes();
     } catch (error) {

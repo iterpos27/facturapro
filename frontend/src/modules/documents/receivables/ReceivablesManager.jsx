@@ -4,6 +4,12 @@ import { apiFetch } from '../../../lib/api';
 import InvoiceRideModal from '../invoices/components/InvoiceRideModal';
 
 const money = (value) => (parseFloat(value || 0) || 0).toFixed(2);
+const numberValue = (value) => parseFloat(value || 0) || 0;
+const formatDateTime = (value) => {
+  if (!value) return 'Sin fecha';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? 'Sin fecha' : date.toLocaleString();
+};
 
 const getCollectionBadge = (item) => {
   const status = String(item.estado_cobranza_actual || item.estado_cobranza || 'PENDIENTE').toUpperCase();
@@ -12,6 +18,8 @@ const getCollectionBadge = (item) => {
   if (status === 'PAGADA') return 'bg-success';
   return 'bg-secondary';
 };
+
+const isPending = (item) => Number(item.saldo || 0) > 0;
 
 export default function ReceivablesManager() {
   const [receivables, setReceivables] = useState([]);
@@ -25,6 +33,8 @@ export default function ReceivablesManager() {
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [showCollectionModal, setShowCollectionModal] = useState(false);
   const [viewInvoiceDetail, setViewInvoiceDetail] = useState(null);
+  const [historyDetail, setHistoryDetail] = useState(null);
+  const [loadingHistory, setLoadingHistory] = useState(false);
 
   // Formulario de Abono
   const [paymentAmount, setPaymentAmount] = useState('');
@@ -216,6 +226,56 @@ export default function ReceivablesManager() {
     }
   };
 
+  const handleOpenHistory = async (invoice) => {
+    setLoadingHistory(true);
+    try {
+      const response = await apiFetch(`/api/invoices/${invoice.id_factura}`);
+      if (!response.ok) throw new Error('No se pudo cargar el historico de cobros.');
+      const data = await response.json();
+      setHistoryDetail(data);
+    } catch (error) {
+      Swal.fire('Error', error.message, 'error');
+    } finally {
+      setLoadingHistory(false);
+    }
+  };
+
+  const buildReceivableHistoryRows = (detail) => {
+    const invoice = detail?.invoice || {};
+    const initialPayments = (detail?.payments || []).map((payment) => ({
+      ...payment,
+      historyType: 'Pago inicial',
+      historyDate: invoice.fecha_emision || payment.created_at,
+      historyMethod: payment.metodo_pago_nombre,
+      historyUser: invoice.username,
+    }));
+    const collections = (detail?.cobros || []).map((payment) => ({
+      ...payment,
+      historyType: 'Abono CxC',
+      historyDate: payment.fecha_cobro,
+      historyMethod: payment.metodo_pago_nombre,
+      historyUser: payment.username,
+    }));
+    const rows = [...initialPayments, ...collections].sort((a, b) => (
+      new Date(a.historyDate || 0).getTime() - new Date(b.historyDate || 0).getTime()
+    ));
+    const paid = numberValue(invoice.total) - numberValue(invoice.saldo);
+
+    if (rows.length === 0 && paid > 0) {
+      rows.push({
+        id_pago: 'reconstruido',
+        historyType: 'Pago registrado',
+        historyDate: invoice.fecha_emision,
+        historyMethod: invoice.metodo_pago_nombre || 'Sin metodo',
+        historyUser: invoice.username,
+        referencia: 'Reconstruido desde el total pagado del documento',
+        monto: paid,
+      });
+    }
+
+    return rows;
+  };
+
   return (
     <div className="module-shell">
       {/* Header */}
@@ -231,8 +291,8 @@ export default function ReceivablesManager() {
 
         <div className="d-flex align-items-center gap-3">
           <span className="count-badge-pill">
-            {filteredReceivables.length}{' '}
-            {filteredReceivables.length === 1 ? 'pendiente' : 'pendientes'}
+            {filteredReceivables.filter(isPending).length}{' '}
+            {filteredReceivables.filter(isPending).length === 1 ? 'pendiente' : 'pendientes'}
           </span>
         </div>
       </div>
@@ -283,7 +343,7 @@ export default function ReceivablesManager() {
                   <th>Cobranza</th>
                   <th className="text-end">Monto Total</th>
                   <th className="text-end">Saldo Pendiente</th>
-                  <th style={{ width: '310px' }}>Acciones</th>
+                  <th style={{ width: '390px' }}>Acciones</th>
                 </tr>
               </thead>
               <tbody>
@@ -321,6 +381,7 @@ export default function ReceivablesManager() {
                           className="btn btn-primary"
                           style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}
                           onClick={() => handleOpenPayment(item)}
+                          disabled={!isPending(item)}
                         >
                           Registrar Abono
                         </button>
@@ -337,6 +398,14 @@ export default function ReceivablesManager() {
                           onClick={() => handleFetchInvoiceDetail(item.id_factura)}
                         >
                           Ver RIDE
+                        </button>
+                        <button
+                          className="btn btn-secondary"
+                          style={{ padding: '0.25rem 0.5rem', fontSize: '0.8rem' }}
+                          onClick={() => handleOpenHistory(item)}
+                          disabled={loadingHistory}
+                        >
+                          Historial
                         </button>
                       </div>
                     </td>
@@ -385,7 +454,7 @@ export default function ReceivablesManager() {
                   </div>
                 </div>
                 <div className="client-card-actions">
-                  <button className="btn btn-primary" onClick={() => handleOpenPayment(item)}>
+                  <button className="btn btn-primary" onClick={() => handleOpenPayment(item)} disabled={!isPending(item)}>
                     Registrar Abono
                   </button>
                   <button className="btn btn-warning" onClick={() => handleOpenCollection(item)}>
@@ -393,6 +462,9 @@ export default function ReceivablesManager() {
                   </button>
                   <button className="btn btn-info text-white" onClick={() => handleFetchInvoiceDetail(item.id_factura)}>
                     Ver RIDE
+                  </button>
+                  <button className="btn btn-secondary" onClick={() => handleOpenHistory(item)} disabled={loadingHistory}>
+                    Historial
                   </button>
                 </div>
               </div>
@@ -588,6 +660,79 @@ export default function ReceivablesManager() {
           onClose={() => setViewInvoiceDetail(null)}
         />
       )}
+
+      {historyDetail && (
+        <PaymentHistoryModal
+          title="Historial de cobros CxC"
+          documentLabel={historyDetail.invoice?.numero_factura}
+          partyName={historyDetail.invoice?.cliente_nombre}
+          total={historyDetail.invoice?.total}
+          paid={numberValue(historyDetail.invoice?.total) - numberValue(historyDetail.invoice?.saldo)}
+          balance={historyDetail.invoice?.saldo}
+          rows={buildReceivableHistoryRows(historyDetail)}
+          emptyText="Esta factura no tiene pagos registrados."
+          onClose={() => setHistoryDetail(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+function PaymentHistoryModal({
+  title,
+  documentLabel,
+  partyName,
+  total,
+  paid,
+  balance,
+  rows,
+  emptyText,
+  onClose,
+}) {
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-container modal-container-clean compact-modal payment-history-modal" onClick={(event) => event.stopPropagation()}>
+        <button className="modal-close-btn" onClick={onClose} aria-label="Cerrar modal">X</button>
+        <h2 className="text-dark fw-bold">{title}</h2>
+        <p className="modal-support-copy">
+          {documentLabel} - {partyName}
+        </p>
+
+        <div className="payment-history-summary">
+          <span>Total <strong>${money(total)}</strong></span>
+          <span>Pagado <strong>${money(paid)}</strong></span>
+          <span>Saldo <strong>${money(balance)}</strong></span>
+        </div>
+
+        <div className="table-responsive">
+          <table className="table table-sm table-striped align-middle mb-0">
+            <thead>
+              <tr>
+                <th>Fecha</th>
+                <th>Tipo</th>
+                <th>Metodo</th>
+                <th>Referencia</th>
+                <th>Usuario</th>
+                <th className="text-end">Monto</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.length === 0 ? (
+                <tr><td colSpan="6" className="text-center text-muted">{emptyText}</td></tr>
+              ) : rows.map((row) => (
+                <tr key={`${row.historyType || 'pago'}-${row.id_cobro || row.id_pago}`}>
+                  <td>{formatDateTime(row.historyDate)}</td>
+                  <td>{row.historyType || 'Pago'}</td>
+                  <td>{row.historyMethod || row.metodo_pago || 'Sin metodo'}</td>
+                  <td>{row.referencia || '-'}</td>
+                  <td>{row.historyUser || '-'}</td>
+                  <td className="text-end fw-bold">${money(row.monto)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
   );
 }

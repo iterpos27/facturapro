@@ -315,7 +315,7 @@ export default function UserManager() {
 
               <div className="form-group mb-3">
                 <label className="form-label">Contrasena {editingUser && '(Dejar en blanco para conservar anterior)'}</label>
-                <input type="password" className="form-control" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Ingrese contrasena de acceso" required={!editingUser} />
+                <input type="password" className="form-control" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Minimo 10 caracteres" minLength={password ? 10 : undefined} required={!editingUser} />
               </div>
 
               <div className="form-group mb-3">

@@ -1,68 +1,82 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import CIcon from '@coreui/icons-react';
+import {
+  cilBasket,
+  cilChartLine,
+  cilFile,
+  cilList,
+  cilPeople,
+  cilReload,
+  cilSpeedometer,
+  cilWarning,
+} from '@coreui/icons';
 import { apiFetch } from '../../lib/api';
 
-const money = (v) => `$${Number(v || 0).toFixed(2)}`;
-const num = (v) => Number(v || 0).toLocaleString();
+const money = (value) => `$${Number(value || 0).toFixed(2)}`;
+const num = (value) => Number(value || 0).toLocaleString();
+const asArray = (value) => (Array.isArray(value) ? value : []);
 
-function MetricCard({ label, value, sub, color, icon, onClick }) {
+function DashboardMetric({ label, value, detail, tone, icon, onClick }) {
+  const clickable = Boolean(onClick);
   return (
-    <div
-      className="col-xl-3 col-md-6"
+    <button
+      type="button"
+      className={`dashboard-metric dashboard-metric-${tone}`}
       onClick={onClick}
-      style={{ cursor: onClick ? 'pointer' : 'default' }}
+      disabled={!clickable}
     >
-      <div
-        className="card h-100 border-0 shadow-sm"
-        style={{
-          borderRadius: '14px',
-          background: `linear-gradient(135deg, ${color}22 0%, ${color}08 100%)`,
-          borderLeft: `4px solid ${color}`,
-          transition: 'transform .15s, box-shadow .15s',
-        }}
-        onMouseEnter={(e) => { if (onClick) { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 6px 20px rgba(0,0,0,.12)'; } }}
-        onMouseLeave={(e) => { e.currentTarget.style.transform = ''; e.currentTarget.style.boxShadow = ''; }}
-      >
-        <div className="card-body d-flex align-items-center gap-3 p-3">
-          <div style={{ fontSize: '2rem', minWidth: '2.5rem', textAlign: 'center' }}>{icon}</div>
-          <div className="flex-grow-1 overflow-hidden">
-            <div className="text-secondary small fw-semibold text-truncate">{label}</div>
-            <div className="fw-bold" style={{ fontSize: '1.45rem', color, lineHeight: 1.15 }}>{value}</div>
-            {sub && <div className="text-muted" style={{ fontSize: '0.76rem' }}>{sub}</div>}
-          </div>
-        </div>
-      </div>
-    </div>
+      <span className="dashboard-metric-icon"><CIcon icon={icon} /></span>
+      <span className="dashboard-metric-copy">
+        <span>{label}</span>
+        <strong>{value}</strong>
+        <small>{detail}</small>
+      </span>
+    </button>
   );
 }
 
-function AlertCard({ items, label, emptyMsg }) {
+function DashboardTable({ title, count, columns, rows, emptyText, onViewAll }) {
   return (
-    <div className="col-md-6">
-      <div className="card border-0 shadow-sm h-100" style={{ borderRadius: '14px' }}>
-        <div className="card-header bg-white border-bottom-0 pt-3 pb-0 px-4">
-          <h6 className="fw-bold text-dark mb-0">{label}</h6>
+    <section className="dashboard-panel">
+      <div className="dashboard-panel-head">
+        <div>
+          <h2>{title}</h2>
+          <span>{count} registros</span>
         </div>
-        <div className="card-body p-0">
-          {items.length === 0 ? (
-            <p className="text-muted text-center py-4 small">{emptyMsg}</p>
-          ) : (
-            <div style={{ maxHeight: '220px', overflowY: 'auto' }}>
-              <table className="table table-sm table-hover mb-0" style={{ fontSize: '0.82rem' }}>
-                <tbody>
-                  {items.map((row, i) => (
-                    <tr key={i}>
-                      {row.map((cell, j) => (
-                        <td key={j} className={j === row.length - 1 ? 'text-end fw-semibold' : ''}>{cell}</td>
-                      ))}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
+        {onViewAll && (
+          <button type="button" className="btn btn-light btn-sm" onClick={onViewAll}>
+            Ver todo
+          </button>
+        )}
       </div>
-    </div>
+      <div className="table-responsive">
+        <table className="table table-sm align-middle mb-0 dashboard-table">
+          <thead>
+            <tr>{columns.map((column) => <th key={column}>{column}</th>)}</tr>
+          </thead>
+          <tbody>
+            {rows.length === 0 ? (
+              <tr><td colSpan={columns.length} className="text-center text-muted py-4">{emptyText}</td></tr>
+            ) : rows.map((row, index) => (
+              <tr key={`${title}-${index}`}>
+                {row.map((cell, cellIndex) => (
+                  <td key={`${title}-${index}-${cellIndex}`}>{cell}</td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
+function QuickAction({ label, icon, onClick }) {
+  return (
+    <button type="button" className="dashboard-action" onClick={onClick}>
+      <CIcon icon={icon} />
+      <span>{label}</span>
+    </button>
   );
 }
 
@@ -70,18 +84,20 @@ export default function DashboardHome({ currentUser, permissions, onNavigate }) 
   const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState(null);
+  const [error, setError] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
+    setError('');
     try {
       const today = new Date().toISOString().slice(0, 10);
-      const res = await apiFetch(`/api/reports/summary?date_from=${today}&date_to=${today}`);
-      if (res.ok) {
-        setSummary(await res.json());
-        setLastUpdated(new Date().toLocaleTimeString());
-      }
+      const response = await apiFetch(`/api/reports/summary?date_from=${today}&date_to=${today}`);
+      if (!response.ok) throw new Error('No se pudo consultar el resumen del dia.');
+      setSummary(await response.json());
+      setLastUpdated(new Date().toLocaleTimeString());
     } catch (err) {
       console.error(err);
+      setError(err.message || 'No se pudo cargar el dashboard.');
     } finally {
       setLoading(false);
     }
@@ -89,109 +105,202 @@ export default function DashboardHome({ currentUser, permissions, onNavigate }) 
 
   useEffect(() => { load(); }, [load]);
 
-  const inv = summary?.invoices || {};
+  const invoices = summary?.invoices || {};
+  const purchases = summary?.purchases || {};
   const cash = summary?.cash || {};
   const profit = summary?.approximateProfit || {};
-  const lowStock = summary?.lowStock || [];
-  const receivables = summary?.receivables || [];
-  const topProducts = summary?.topProducts || [];
+  const inventory = summary?.inventory || {};
+  const lowStock = asArray(summary?.lowStock);
+  const receivables = asArray(summary?.receivables);
+  const topProducts = asArray(summary?.topProducts);
+  const paymentBreakdown = asArray(summary?.paymentBreakdown);
+
+  const todayLabel = useMemo(() => (
+    new Date().toLocaleDateString('es-EC', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    })
+  ), []);
+
+  const metrics = [
+    {
+      label: 'Facturado hoy',
+      value: money(invoices.total_facturado),
+      detail: `${num(invoices.facturas_emitidas)} facturas emitidas`,
+      tone: 'success',
+      icon: cilFile,
+      onClick: permissions.invoices ? () => onNavigate('/facturas') : null,
+    },
+    {
+      label: 'Saldo por cobrar',
+      value: money(invoices.saldo_pendiente),
+      detail: `${receivables.length} documentos pendientes`,
+      tone: 'warning',
+      icon: cilList,
+      onClick: permissions.receivables ? () => onNavigate('/cuentas-cobrar') : null,
+    },
+    {
+      label: 'Utilidad estimada',
+      value: money(profit.utilidad_estimada),
+      detail: 'ventas menos costo',
+      tone: 'primary',
+      icon: cilChartLine,
+      onClick: permissions.reports ? () => onNavigate('/reportes') : null,
+    },
+    {
+      label: 'Ventas en caja',
+      value: money(cash.ventas_contado),
+      detail: `${num(cash.abiertas)} cajas abiertas`,
+      tone: 'info',
+      icon: cilSpeedometer,
+      onClick: permissions.cash ? () => onNavigate('/caja') : null,
+    },
+  ];
 
   return (
-    <div className="module-shell">
-      {/* Header */}
-      <div className="view-header module-header-card d-flex align-items-center justify-content-between">
+    <div className="module-shell dashboard-home">
+      <div className="dashboard-hero">
         <div>
-          <h1 className="h2 mb-1 text-dark" style={{ fontWeight: '800' }}>
-            Buenos días, {currentUser?.username} 👋
-          </h1>
-          <p className="text-secondary mb-0" style={{ fontSize: '0.9rem' }}>
-            Resumen de hoy · {new Date().toLocaleDateString('es-EC', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-            {lastUpdated && <span className="ms-2 text-muted">· actualizado {lastUpdated}</span>}
+          <span className="dashboard-kicker">Panel operativo</span>
+          <h1>Buenos dias, {currentUser?.username || 'usuario'}</h1>
+          <p>
+            Resumen de hoy: {todayLabel}
+            {lastUpdated && <span> · actualizado {lastUpdated}</span>}
           </p>
         </div>
-        <button className="btn btn-secondary btn-sm" onClick={load} disabled={loading}>
-          {loading ? '⏳' : '🔄 Actualizar'}
+        <button type="button" className="btn btn-secondary btn-sm" onClick={load} disabled={loading}>
+          <CIcon icon={cilReload} className="me-1" />
+          {loading ? 'Actualizando...' : 'Actualizar'}
         </button>
       </div>
 
       {loading && !summary ? (
-        <div className="text-center py-5">
+        <div className="dashboard-loading">
           <div className="spinner-border text-primary" role="status" />
-          <p className="text-secondary mt-2 small">Cargando métricas...</p>
+          <p>Cargando metricas...</p>
+        </div>
+      ) : error ? (
+        <div className="dashboard-error">
+          <CIcon icon={cilWarning} />
+          <div>
+            <strong>No se pudo cargar el dashboard</strong>
+            <span>{error}</span>
+          </div>
         </div>
       ) : (
         <>
-          {/* KPI Cards */}
-          <div className="row g-3 mb-4">
-            <MetricCard
-              label="Facturado hoy"
-              value={money(inv.total_facturado)}
-              sub={`${num(inv.facturas_emitidas)} factura(s) emitida(s)`}
-              color="#10b981"
-              icon="💰"
-              onClick={permissions.invoices ? () => onNavigate('/facturas') : null}
-            />
-            <MetricCard
-              label="Saldo por cobrar"
-              value={money(inv.saldo_pendiente)}
-              sub="Facturas a crédito pendientes"
-              color="#f59e0b"
-              icon="📋"
-              onClick={permissions.receivables ? () => onNavigate('/cuentas-cobrar') : null}
-            />
-            <MetricCard
-              label="Utilidad estimada"
-              value={money(profit.utilidad_estimada)}
-              sub="Precio venta menos costo"
-              color="#6366f1"
-              icon="📈"
-              onClick={permissions.reports ? () => onNavigate('/reportes') : null}
-            />
-            <MetricCard
-              label="Ventas en caja"
-              value={money(cash.ventas_contado)}
-              sub={`${num(cash.abiertas)} sesión(es) abiertas`}
-              color="#3b82f6"
-              icon="🏧"
-              onClick={permissions.cash ? () => onNavigate('/caja') : null}
-            />
+          <div className="dashboard-metrics-grid">
+            {metrics.map((metric) => <DashboardMetric key={metric.label} {...metric} />)}
           </div>
 
-          {/* Alertas y listas */}
-          <div className="row g-3 mb-4">
-            <AlertCard
-              label={`⚠️ Stock bajo (${lowStock.length})`}
-              items={lowStock.map((r) => [r.codigo, r.nombre, `${Number(r.stock_actual || 0).toFixed(2)} uds`])}
-              emptyMsg="Sin alertas de stock"
-            />
-            <AlertCard
-              label={`🕐 Cuentas por cobrar (${receivables.length})`}
-              items={receivables.slice(0, 8).map((r) => [r.numero_factura, r.cliente_nombre, money(r.saldo)])}
-              emptyMsg="Sin saldos pendientes hoy"
-            />
-            <AlertCard
-              label={`Productos mas vendidos (${topProducts.length})`}
-              items={topProducts.slice(0, 8).map((r) => [
-                r.codigo || '-',
-                r.producto_nombre || r.nombre,
-                `${num(r.cantidad_vendida || r.cantidad || 0)} uds`,
+          <div className="dashboard-operation-grid">
+            <section className="dashboard-panel dashboard-cash-panel">
+              <div className="dashboard-panel-head">
+                <div>
+                  <h2>Caja y flujo</h2>
+                  <span>movimiento del dia</span>
+                </div>
+                {permissions.cash && (
+                  <button type="button" className="btn btn-light btn-sm" onClick={() => onNavigate('/caja')}>
+                    Abrir caja
+                  </button>
+                )}
+              </div>
+              <div className="dashboard-cash-grid">
+                <span><small>Contado</small><strong>{money(cash.ventas_contado)}</strong></span>
+                <span><small>Credito</small><strong>{money(cash.ventas_credito)}</strong></span>
+                <span><small>Cobros CxC</small><strong>{money(cash.cobros_cxc)}</strong></span>
+                <span><small>Total operativo</small><strong>{money(cash.total_operativo)}</strong></span>
+              </div>
+            </section>
+
+            <section className="dashboard-panel dashboard-cash-panel">
+              <div className="dashboard-panel-head">
+                <div>
+                  <h2>Inventario y compras</h2>
+                  <span>control rapido</span>
+                </div>
+                {permissions.inventory && (
+                  <button type="button" className="btn btn-light btn-sm" onClick={() => onNavigate('/inventario')}>
+                    Inventario
+                  </button>
+                )}
+              </div>
+              <div className="dashboard-cash-grid">
+                <span><small>Valor stock</small><strong>{money(inventory.valor_inventario)}</strong></span>
+                <span><small>Unidades</small><strong>{Number(inventory.unidades_stock || 0).toFixed(2)}</strong></span>
+                <span><small>Compras</small><strong>{money(purchases.total_compras)}</strong></span>
+                <span><small>Stock bajo</small><strong>{lowStock.length}</strong></span>
+              </div>
+            </section>
+          </div>
+
+          <div className="dashboard-main-grid">
+            <DashboardTable
+              title="Cuentas por cobrar"
+              count={receivables.length}
+              columns={['Factura', 'Cliente', 'Saldo']}
+              rows={receivables.slice(0, 8).map((row) => [
+                row.numero_factura,
+                row.cliente_nombre,
+                <strong key="saldo">{money(row.saldo)}</strong>,
               ])}
-              emptyMsg="Sin ventas de productos hoy"
+              emptyText="Sin saldos pendientes"
+              onViewAll={permissions.receivables ? () => onNavigate('/cuentas-cobrar') : null}
+            />
+            <DashboardTable
+              title="Stock bajo"
+              count={lowStock.length}
+              columns={['Codigo', 'Producto', 'Stock']}
+              rows={lowStock.slice(0, 8).map((row) => [
+                row.codigo,
+                row.nombre,
+                <strong key="stock">{Number(row.stock_actual || 0).toFixed(2)}</strong>,
+              ])}
+              emptyText="Sin alertas de stock"
+              onViewAll={permissions.products ? () => onNavigate('/productos') : null}
+            />
+            <DashboardTable
+              title="Mas vendidos"
+              count={topProducts.length}
+              columns={['Codigo', 'Producto', 'Cantidad']}
+              rows={topProducts.slice(0, 8).map((row) => [
+                row.codigo || '-',
+                row.nombre || row.producto_nombre,
+                `${num(row.cantidad || row.cantidad_vendida || 0)} uds`,
+              ])}
+              emptyText="Sin ventas registradas hoy"
+              onViewAll={permissions.reports ? () => onNavigate('/reportes') : null}
+            />
+            <DashboardTable
+              title="Formas de pago"
+              count={paymentBreakdown.length}
+              columns={['Metodo', 'Total']}
+              rows={paymentBreakdown.slice(0, 8).map((row) => [
+                row.metodo_pago || 'Sin metodo',
+                <strong key="total">{money(row.total)}</strong>,
+              ])}
+              emptyText="Sin pagos registrados hoy"
+              onViewAll={permissions.reports ? () => onNavigate('/reportes') : null}
             />
           </div>
 
-          {/* Accesos rápidos */}
-          <div className="client-data-panel">
-            <h6 className="fw-bold text-dark mb-3">⚡ Accesos rápidos</h6>
-            <div className="d-flex flex-wrap gap-2">
-              {permissions.invoices    && <button className="btn btn-outline-primary btn-sm" onClick={() => onNavigate('/facturas')}>Nueva Factura</button>}
-              {permissions.proformas   && <button className="btn btn-outline-secondary btn-sm" onClick={() => onNavigate('/proformas')}>Nueva Proforma</button>}
-              {permissions.clients     && <button className="btn btn-outline-secondary btn-sm" onClick={() => onNavigate('/clientes')}>Clientes</button>}
-              {permissions.products    && <button className="btn btn-outline-secondary btn-sm" onClick={() => onNavigate('/productos')}>Productos</button>}
-              {permissions.reports     && <button className="btn btn-outline-secondary btn-sm" onClick={() => onNavigate('/reportes')}>Reportes</button>}
-              {permissions.company     && <button className="btn btn-outline-danger btn-sm" onClick={() => onNavigate('/empresa')}>Config. Empresa</button>}
+          <section className="dashboard-actions-panel">
+            <div>
+              <h2>Accesos rapidos</h2>
+              <span>atajos frecuentes del flujo comercial</span>
             </div>
-          </div>
+            <div className="dashboard-actions-grid">
+              {permissions.invoices && <QuickAction label="Nueva factura" icon={cilFile} onClick={() => onNavigate('/facturas')} />}
+              {permissions.proformas && <QuickAction label="Proforma" icon={cilList} onClick={() => onNavigate('/proformas')} />}
+              {permissions.clients && <QuickAction label="Clientes" icon={cilPeople} onClick={() => onNavigate('/clientes')} />}
+              {permissions.products && <QuickAction label="Productos" icon={cilBasket} onClick={() => onNavigate('/productos')} />}
+              {permissions.receivables && <QuickAction label="CxC" icon={cilList} onClick={() => onNavigate('/cuentas-cobrar')} />}
+              {permissions.reports && <QuickAction label="Reportes" icon={cilChartLine} onClick={() => onNavigate('/reportes')} />}
+            </div>
+          </section>
         </>
       )}
     </div>
