@@ -1,14 +1,21 @@
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
+const compression = require('compression');
 const rateLimit = require('express-rate-limit');
 const path = require('path');
 require('dotenv').config();
 
 const logger = require('./utils/logger');
+const db = require('./db');
 
 if (process.env.NODE_ENV === 'production' && (!process.env.JWT_SECRET || process.env.JWT_SECRET === 'dev-only-facturapro-secret')) {
   logger.fatal('FATAL: Se debe configurar JWT_SECRET con un valor seguro en entornos de producción.');
+  process.exit(1);
+}
+
+if (process.env.NODE_ENV === 'production' && (!process.env.DATA_ENCRYPTION_KEY || process.env.DATA_ENCRYPTION_KEY.length < 32)) {
+  logger.fatal('FATAL: DATA_ENCRYPTION_KEY debe tener al menos 32 caracteres en produccion.');
   process.exit(1);
 }
 
@@ -17,6 +24,9 @@ const PORT = process.env.PORT || 5000;
 const corsOrigin = process.env.CORS_ORIGIN;
 
 app.disable('x-powered-by');
+if (process.env.TRUST_PROXY) {
+  app.set('trust proxy', process.env.TRUST_PROXY === 'true' ? 1 : process.env.TRUST_PROXY);
+}
 
 // Rate limiting global para todas las rutas API
 // El login tiene su propio limitador más estricto (5 req / 15 min en auth.js)
@@ -36,7 +46,8 @@ app.use(helmet({
   crossOriginResourcePolicy: { policy: 'cross-origin' }, // permite servir uploads al frontend
 }));
 app.use(cors(corsOrigin ? { origin: corsOrigin.split(',').map((origin) => origin.trim()) } : undefined));
-app.use(express.json());
+app.use(compression()); // compresión gzip/brotli — reduce hasta 80% el tamaño de respuestas JSON
+app.use(express.json({ limit: '1mb' }));
 app.use('/uploads', express.static(path.resolve(__dirname, 'uploads')));
 app.use('/api', apiLimiter);
 
@@ -45,8 +56,14 @@ app.get('/', (_req, res) => {
   res.json({ message: 'API de Facturapro funcionando' });
 });
 
-app.get('/health', (_req, res) => {
-  res.json({ status: 'ok' });
+app.get('/health', async (_req, res) => {
+  try {
+    await db.query('SELECT 1');
+    res.json({ status: 'ok', database: 'ok', timestamp: new Date().toISOString() });
+  } catch (error) {
+    logger.error({ err: error }, 'Health check de base de datos fallido');
+    res.status(503).json({ status: 'degraded', database: 'unavailable' });
+  }
 });
 
 // Registrar rutas
@@ -104,6 +121,31 @@ app.use((err, req, res, _next) => {
   res.status(500).json({ error: 'Ocurrió un error en el servidor.' });
 });
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   logger.info(`Servidor corriendo en http://localhost:${PORT}`);
 });
+
+let shuttingDown = false;
+async function shutdown(signal) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  logger.info({ signal }, 'Apagando servidor de forma controlada');
+
+  server.close(async (error) => {
+    if (error) logger.error({ err: error }, 'Error al cerrar el servidor HTTP');
+    try {
+      await db.pool.end();
+    } catch (dbError) {
+      logger.error({ err: dbError }, 'Error al cerrar el pool PostgreSQL');
+    }
+    process.exit(error ? 1 : 0);
+  });
+
+  setTimeout(() => {
+    logger.fatal('Tiempo de apagado agotado; terminando proceso.');
+    process.exit(1);
+  }, 10000).unref();
+}
+
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));

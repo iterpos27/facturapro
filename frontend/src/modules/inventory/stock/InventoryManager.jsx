@@ -75,10 +75,10 @@ export default function InventoryManager() {
 
   const fetchProducts = async () => {
     try {
-      const response = await apiFetch('/api/products');
+      const response = await apiFetch('/api/products?limit=500&page=1');
       if (response.ok) {
         const data = await response.json();
-        setProducts(data);
+        setProducts(Array.isArray(data) ? data : (data.data || []));
       }
     } catch (error) {
       console.error(error);

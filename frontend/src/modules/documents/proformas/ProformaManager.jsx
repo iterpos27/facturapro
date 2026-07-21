@@ -67,18 +67,19 @@ export default function ProformaManager({ onInvoiceProforma }) {
   const loadMetadata = async () => {
     try {
       const [clientResponse, productResponse] = await Promise.all([
-        apiFetch('/api/clients'),
-        apiFetch('/api/products'),
+        apiFetch('/api/clients?limit=500&page=1'),
+        apiFetch('/api/products?limit=500&page=1&activo=true'),
       ]);
 
       if (clientResponse.ok) {
         const clientData = await clientResponse.json();
-        setClients(clientData);
+        setClients(Array.isArray(clientData) ? clientData : (clientData.data || []));
       }
 
       if (productResponse.ok) {
         const productData = await productResponse.json();
-        setProducts(productData.filter((product) => product.activo));
+        const list = Array.isArray(productData) ? productData : (productData.data || []);
+        setProducts(list.filter((product) => product.activo));
       }
     } catch {
       showAlert('No se pudo cargar clientes o productos.', 'error');

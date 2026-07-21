@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 const { writeAudit } = require('../utils/audit');
+const { redactCompany } = require('../utils/secrets');
 const { authenticateToken } = require('./auth');
 const { validate, schemas } = require('../middleware/validate');
 const { recordInventoryCostMovement } = require('../services/inventory_costing');
@@ -51,8 +52,16 @@ router.get('/payables', async (req, res) => {
              END AS dias_vencidos
       FROM compras c
       JOIN proveedores p ON c.id_proveedor = p.id_proveedor
-      WHERE c.estado = 'REGISTRADA' AND COALESCE(c.saldo, 0) > 0
-      ORDER BY c.fecha_vencimiento ASC NULLS LAST, c.fecha_compra DESC
+      WHERE c.estado = 'REGISTRADA'
+        AND (
+          COALESCE(c.saldo, 0) > 0
+          OR c.tipo_compra = 'CREDITO'
+          OR EXISTS (SELECT 1 FROM compra_pagos cp WHERE cp.id_compra = c.id_compra)
+        )
+      ORDER BY
+        CASE WHEN COALESCE(c.saldo, 0) > 0 THEN 0 ELSE 1 END,
+        c.fecha_vencimiento ASC NULLS LAST,
+        c.fecha_compra DESC
     `);
     res.json(result.rows);
   } catch (error) {
@@ -61,7 +70,7 @@ router.get('/payables', async (req, res) => {
   }
 });
 
-router.post('/:id/payments', async (req, res) => {
+router.post('/:id/payments', validate(schemas.registerPayment), async (req, res) => {
   const { id } = req.params;
   const { monto, metodo_pago, referencia } = req.body || {};
   const id_usuario = req.user.id_usuario;
@@ -164,12 +173,23 @@ router.get('/:id', async (req, res) => {
       WHERE cd.id_compra = $1
       ORDER BY cd.id_detalle ASC
     `, [id]);
+    const paymentsRes = await db.query(`
+      SELECT cp.*, u.username
+      FROM compra_pagos cp
+      LEFT JOIN usuarios u ON cp.id_usuario = u.id_usuario
+      WHERE cp.id_compra = $1
+      ORDER BY cp.fecha_pago ASC
+    `, [id]).catch((error) => {
+      if (error.code === '42P01') return { rows: [] };
+      throw error;
+    });
     const companyRes = await db.query('SELECT * FROM empresas LIMIT 1');
 
     res.json({
       purchase: compraRes.rows[0],
       details: detallesRes.rows,
-      company: companyRes.rows[0] || null,
+      payments: paymentsRes.rows,
+      company: redactCompany(companyRes.rows[0]),
     });
   } catch (error) {
     console.error('Error al obtener detalle de compra:', error);
@@ -178,7 +198,7 @@ router.get('/:id', async (req, res) => {
 });
 
 // 3. Registrar una nueva compra (POST /api/purchases)
-router.post('/', async (req, res) => {
+router.post('/', validate(schemas.createPurchase), async (req, res) => {
   const {
     numero_factura_compra,
     id_proveedor,
@@ -311,7 +331,7 @@ router.post('/', async (req, res) => {
   }
 });
 
-router.put('/:id/cancel', async (req, res) => {
+router.put('/:id/cancel', validate(schemas.cancelDoc), async (req, res) => {
   const { id } = req.params;
   const { reason } = req.body || {};
   const id_usuario = req.user.id_usuario;

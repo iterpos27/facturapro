@@ -4,6 +4,7 @@ const db = require('../db');
 const { writeAudit } = require('../utils/audit');
 const { generarClaveAccesoSRI } = require('../utils/sri_utils');
 const { authenticateToken, authorizePermissions } = require('./auth');
+const { redactCompany } = require('../utils/secrets');
 const { validate, schemas } = require('../middleware/validate');
 const { formatDocumentNumber, getDefaultBranch, nextDocumentSequential } = require('../services/sequential_service');
 const { recordInventoryCostMovement } = require('../services/inventory_costing');
@@ -67,7 +68,7 @@ router.get('/:id', async (req, res) => {
     res.json({
       creditNote: ncRes.rows[0],
       details: detallesRes.rows,
-      company: companyRes.rows[0] || null,
+      company: redactCompany(companyRes.rows[0]),
     });
   } catch (error) {
     console.error('Error al obtener detalle de nota de credito:', error);
@@ -75,7 +76,7 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-router.post('/', async (req, res) => {
+router.post('/', validate(schemas.createCreditNote), async (req, res) => {
   const { id_factura, motivo, items } = req.body || {};
   const id_usuario = req.user.id_usuario;
 
@@ -258,7 +259,7 @@ router.post('/', async (req, res) => {
   }
 });
 
-router.put('/:id/cancel', authorizePermissions('DOCUMENT_CANCEL'), async (req, res) => {
+router.put('/:id/cancel', authorizePermissions('DOCUMENT_CANCEL'), validate(schemas.cancelDoc), async (req, res) => {
   const { id } = req.params;
   const { reason } = req.body || {};
   const id_usuario = req.user.id_usuario;

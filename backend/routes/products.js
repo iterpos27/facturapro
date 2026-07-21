@@ -2,6 +2,8 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 const { authenticateToken } = require('./auth');
+const logger = require('../utils/logger');
+const { validate, schemas } = require('../middleware/validate');
 
 // Proteger todas las rutas de productos con autenticación
 router.use(authenticateToken);
@@ -28,20 +30,53 @@ router.get('/taxes', async (req, res) => {
   }
 });
 
-// 3. Obtener todos los productos (GET /api/products)
+// 3. Obtener productos con paginación y búsqueda (GET /api/products)
+// Query params: page, limit, search (nombre o código), activo (true/false)
 router.get('/', async (req, res) => {
+  const page   = Math.max(parseInt(req.query.page   || '1',  10), 1);
+  const limit  = Math.min(parseInt(req.query.limit  || '50', 10), 500);
+  const offset = (page - 1) * limit;
+  const search = (req.query.search || '').trim();
+  const soloActivos = req.query.activo !== 'false'; // por defecto solo activos
+
   try {
-    const query = `
-      SELECT p.*, c.nombre as categoria_nombre, i.nombre as impuesto_nombre, i.porcentaje as impuesto_porcentaje 
-      FROM productos p
-      LEFT JOIN categorias c ON p.id_categoria = c.id_categoria
-      LEFT JOIN impuestos i ON p.id_impuesto = i.id_impuesto
-      ORDER BY p.id_producto DESC
-    `;
-    const result = await db.query(query);
-    res.json(result.rows);
+    const params = [];
+    const where  = [];
+
+    if (soloActivos) {
+      where.push('p.activo = TRUE');
+    }
+    if (search) {
+      params.push(`%${search}%`);
+      where.push(`(p.nombre ILIKE $${params.length} OR p.codigo ILIKE $${params.length})`);
+    }
+
+    const whereClause = where.length ? `WHERE ${where.join(' AND ')}` : '';
+
+    const [dataRes, countRes] = await Promise.all([
+      db.query(
+        `SELECT p.*, c.nombre AS categoria_nombre, i.nombre AS impuesto_nombre, i.porcentaje AS impuesto_porcentaje
+         FROM productos p
+         LEFT JOIN categorias c ON p.id_categoria = c.id_categoria
+         LEFT JOIN impuestos i ON p.id_impuesto = i.id_impuesto
+         ${whereClause}
+         ORDER BY p.nombre ASC
+         LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+        [...params, limit, offset]
+      ),
+      db.query(`SELECT COUNT(*) FROM productos p ${whereClause}`, params),
+    ]);
+
+    const total = parseInt(countRes.rows[0].count, 10);
+    res.json({
+      data: dataRes.rows,
+      total,
+      page,
+      limit,
+      pages: Math.ceil(total / limit),
+    });
   } catch (error) {
-    console.error('Error al obtener productos:', error);
+    logger.error({ err: error }, 'Error al obtener productos');
     res.status(500).json({ error: 'Error al obtener productos de la base de datos.' });
   }
 });
@@ -73,7 +108,7 @@ router.get('/:id', async (req, res) => {
 });
 
 // 5. Registrar un nuevo producto (POST /api/products)
-router.post('/', async (req, res) => {
+router.post('/', validate(schemas.createProduct), async (req, res) => {
   const {
     codigo,
     sku,
@@ -159,7 +194,7 @@ router.post('/', async (req, res) => {
 });
 
 // 6. Modificar un producto existente (PUT /api/products/:id)
-router.put('/:id', async (req, res) => {
+router.put('/:id', validate(schemas.createProduct), async (req, res) => {
   const { id } = req.params;
   const {
     codigo,

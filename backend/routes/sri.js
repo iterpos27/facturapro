@@ -25,12 +25,60 @@ const getCurrentUserId = (req) => req.user?.id_usuario || req.user?.id || null;
 const normalize = (value) => String(value || '').trim();
 const money = (value) => (Math.round((parseFloat(value) || 0) * 100) / 100).toFixed(2);
 
+function normalizeAuthorizationResult(authorization) {
+  const estado = normalize(authorization.estado).toUpperCase();
+  const messages = authorization.mensajes || [];
+  if (estado === 'AUTORIZADO') {
+    return { finalState: 'AUTORIZADO', messages };
+  }
+  if (messages.length > 0) {
+    return { finalState: 'NO_AUTORIZADO', messages };
+  }
+  return {
+    finalState: 'RECIBIDO',
+    messages: [{
+      mensaje: 'El SRI recibio el comprobante, pero aun no devolvio autorizacion final. Vuelve a procesar o consulta nuevamente en unos minutos.',
+      tipo: estado || 'EN_PROCESO',
+    }],
+  };
+}
+
+function hasRegisteredAccessKeyMessage(messages = []) {
+  return messages.some((message) => {
+    const text = [
+      message.identificador,
+      message.mensaje,
+      message.informacionAdicional,
+      message.tipo,
+    ].map((value) => normalize(value).toUpperCase()).join(' ');
+    return text.includes('CLAVE ACCESO REGISTRADA')
+      || text.includes('CLAVE DE ACCESO REGISTRADA')
+      || text.includes('CLAVE ACCESO YA REGISTRADA');
+  });
+}
+
 function sriRecordMatchesCompany(sri, company) {
   const ruc = normalize(company.ruc);
   if (!sri?.xml_generado || !claveAccesoPerteneceAlRuc(sri.clave_acceso, ruc)) {
     return false;
   }
-  return sri.xml_generado.includes(`<ruc>${ruc}</ruc>`) && sri.xml_generado.includes(sri.clave_acceso);
+  return sri.xml_generado.includes(`<ruc>${ruc}</ruc>`)
+    && sri.xml_generado.includes(sri.clave_acceso)
+    && sri.xml_generado.includes('id="comprobante"');
+}
+
+function shouldReuseGeneratedSriRecord(sri, company) {
+  const estado = normalize(sri?.estado).toUpperCase();
+  if (!sri) {
+    return false;
+  }
+  if (estado === 'AUTORIZADO') {
+    return true;
+  }
+  if (['DEVUELTO', 'NO_AUTORIZADO'].includes(estado)) {
+    return false;
+  }
+  return sriRecordMatchesCompany(sri, company);
 }
 
 function sriEmailConfig(tipoComprobante) {
@@ -334,10 +382,7 @@ async function ensureGeneratedInvoiceXml(client, idFactura, company) {
   }
 
   const existingSri = sriRes.rows[0];
-  if (existingSri?.estado === 'AUTORIZADO') {
-    return existingSri;
-  }
-  if (sriRecordMatchesCompany(existingSri, company)) {
+  if (shouldReuseGeneratedSriRecord(existingSri, company)) {
     return existingSri;
   }
 
@@ -467,10 +512,7 @@ async function ensureGeneratedComplementaryXml(client, kind, idDocumento, compan
   }
 
   const existingSri = sriRes.rows[0];
-  if (existingSri?.estado === 'AUTORIZADO') {
-    return existingSri;
-  }
-  if (sriRecordMatchesCompany(existingSri, company)) {
+  if (shouldReuseGeneratedSriRecord(existingSri, company)) {
     return existingSri;
   }
 
@@ -580,9 +622,11 @@ async function processComplementarySriHandler(req, res, kind) {
     }
 
     const reception = await sendReceipt(signedXml, company, sri.ambiente);
-    const receptionState = reception.estado === 'RECIBIDA' ? 'RECIBIDO' : 'DEVUELTO';
+    const receptionMessages = reception.mensajes || [];
+    const alreadyRegistered = hasRegisteredAccessKeyMessage(receptionMessages);
+    const receptionState = reception.estado === 'RECIBIDA' || alreadyRegistered ? 'RECIBIDO' : 'DEVUELTO';
     if (receptionState !== 'RECIBIDO') {
-      const messages = reception.mensajes || [];
+      const messages = receptionMessages;
       const updated = await client.query(`
         UPDATE sri_comprobantes
         SET estado = 'DEVUELTO',
@@ -606,8 +650,7 @@ async function processComplementarySriHandler(req, res, kind) {
     }
 
     const authorization = await authorizeReceipt(sri.clave_acceso, company, sri.ambiente);
-    const finalState = authorization.estado === 'AUTORIZADO' ? 'AUTORIZADO' : 'NO_AUTORIZADO';
-    const messages = authorization.mensajes || [];
+    const { finalState, messages } = normalizeAuthorizationResult(authorization);
     const updated = await client.query(`
       UPDATE sri_comprobantes
       SET estado = $2,
@@ -874,8 +917,10 @@ router.post('/invoices/:id/send-test', async (req, res) => {
     }
 
     const reception = await sendReceipt(signedXml, company, sri.ambiente);
-    const estado = reception.estado === 'RECIBIDA' ? 'RECIBIDO' : 'DEVUELTO';
     const messages = reception.mensajes || [];
+    const estado = reception.estado === 'RECIBIDA' || hasRegisteredAccessKeyMessage(messages)
+      ? 'RECIBIDO'
+      : 'DEVUELTO';
 
     const updated = await client.query(`
       UPDATE sri_comprobantes
@@ -938,8 +983,7 @@ router.post('/invoices/:id/authorize-test', async (req, res) => {
     }
 
     const authorization = await authorizeReceipt(sri.clave_acceso, company, sri.ambiente);
-    const estado = authorization.estado === 'AUTORIZADO' ? 'AUTORIZADO' : 'NO_AUTORIZADO';
-    const messages = authorization.mensajes || [];
+    const { finalState: estado, messages } = normalizeAuthorizationResult(authorization);
 
     const updated = await client.query(`
       UPDATE sri_comprobantes
@@ -1023,9 +1067,11 @@ router.post('/invoices/:id/process-test', authorizePermissions('SRI_PROCESS'), a
     }
 
     const reception = await sendReceipt(signedXml, company, sri.ambiente);
-    const receptionState = reception.estado === 'RECIBIDA' ? 'RECIBIDO' : 'DEVUELTO';
+    const receptionMessages = reception.mensajes || [];
+    const alreadyRegistered = hasRegisteredAccessKeyMessage(receptionMessages);
+    const receptionState = reception.estado === 'RECIBIDA' || alreadyRegistered ? 'RECIBIDO' : 'DEVUELTO';
     if (receptionState !== 'RECIBIDO') {
-      const messages = reception.mensajes || [];
+      const messages = receptionMessages;
       const updated = await client.query(`
         UPDATE sri_comprobantes
         SET estado = 'DEVUELTO',
@@ -1051,8 +1097,7 @@ router.post('/invoices/:id/process-test', authorizePermissions('SRI_PROCESS'), a
     }
 
     const authorization = await authorizeReceipt(sri.clave_acceso, company, sri.ambiente);
-    const finalState = authorization.estado === 'AUTORIZADO' ? 'AUTORIZADO' : 'NO_AUTORIZADO';
-    const messages = authorization.mensajes || [];
+    const { finalState, messages } = normalizeAuthorizationResult(authorization);
     const updated = await client.query(`
       UPDATE sri_comprobantes
       SET estado = $2,

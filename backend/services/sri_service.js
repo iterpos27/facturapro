@@ -2,8 +2,13 @@ const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
 const forge = require('node-forge');
+const { decryptSecret } = require('../utils/secrets');
 const { DOMParser } = require('@xmldom/xmldom');
-const { signInvoiceXml } = require('ec-sri-invoice-signer');
+const {
+  signCreditNoteXml,
+  signInvoiceXml,
+  signWithholdingCertificateXml,
+} = require('ec-sri-invoice-signer');
 
 const SRI_TEST_RECEPTION_URL = 'https://celcer.sri.gob.ec/comprobantes-electronicos-ws/RecepcionComprobantesOffline';
 const SRI_TEST_AUTHORIZATION_URL = 'https://celcer.sri.gob.ec/comprobantes-electronicos-ws/AutorizacionComprobantesOffline';
@@ -39,7 +44,7 @@ function resolveCertificatePath(certificatePath) {
 
 function readPkcs12Certificate(company) {
   const certificatePath = resolveCertificatePath(company.certificado_path);
-  const password = normalize(company.certificado_clave);
+  const password = normalize(decryptSecret(company.certificado_clave));
   if (!password) {
     throw new Error('Configure la clave del certificado de firma electronica.');
   }
@@ -78,7 +83,17 @@ function validateCertificateConfig(company) {
 
 async function signXmlWithCertificate(xml, company) {
   const { p12Buffer, password } = readPkcs12Certificate(company);
-  return signInvoiceXml(xml, p12Buffer, { pkcs12Password: password });
+  const rootMatch = String(xml || '').match(/<\?xml[^>]*>\s*<([A-Za-z][\w:-]*)\b|^\s*<([A-Za-z][\w:-]*)\b/);
+  const documentType = rootMatch?.[1] || rootMatch?.[2];
+  const options = { pkcs12Password: password };
+
+  if (documentType === 'notaCredito') {
+    return signCreditNoteXml(xml, p12Buffer, options);
+  }
+  if (documentType === 'comprobanteRetencion') {
+    return signWithholdingCertificateXml(xml, p12Buffer, options);
+  }
+  return signInvoiceXml(xml, p12Buffer, options);
 }
 
 function getFirstText(xml, tags) {

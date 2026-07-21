@@ -3,7 +3,7 @@ const path = require('path');
 const db = require('../db');
 
 const checks = [
-  { key: 'company', label: 'Empresa configurada', sql: 'SELECT COUNT(*)::int AS count FROM empresas' },
+  { key: 'company', label: 'Empresa unica configurada', sql: 'SELECT COUNT(*)::int AS count FROM empresas', expectedCount: 1 },
   { key: 'products', label: 'Productos activos', sql: "SELECT COUNT(*)::int AS count FROM productos WHERE COALESCE(activo, true) = true" },
   { key: 'clients', label: 'Clientes', sql: 'SELECT COUNT(*)::int AS count FROM clients' },
   { key: 'suppliers', label: 'Proveedores', sql: 'SELECT COUNT(*)::int AS count FROM proveedores' },
@@ -37,7 +37,21 @@ function checkBackups() {
   }
 
   const files = fs.readdirSync(backupDir).filter((file) => file.toLowerCase().endsWith('.sql'));
-  return { key: 'backups', label: 'Backup SQL disponible', count: files.length, error: null };
+  if (files.length === 0) {
+    return { key: 'backups', label: 'Backup SQL reciente', count: 0, error: 'No hay backups SQL', ok: false };
+  }
+
+  const latestTimestamp = Math.max(...files.map((file) => fs.statSync(path.join(backupDir, file)).mtimeMs));
+  const ageHours = (Date.now() - latestTimestamp) / (60 * 60 * 1000);
+  const maxAgeHours = Number(process.env.BACKUP_MAX_AGE_HOURS || 26);
+  const isRecent = ageHours <= maxAgeHours;
+  return {
+    key: 'backups',
+    label: 'Backup SQL reciente',
+    count: files.length,
+    error: isRecent ? null : `Ultimo backup hace ${Math.floor(ageHours)} horas (maximo ${maxAgeHours})`,
+    ok: isRecent,
+  };
 }
 
 async function main() {
@@ -53,7 +67,9 @@ async function main() {
 
   let missingRequired = 0;
   for (const result of results) {
-    const ok = result.count > 0;
+    const ok = result.ok ?? (result.expectedCount !== undefined
+      ? result.count === result.expectedCount
+      : result.count > 0);
     const prefix = ok ? 'OK' : result.optional ? 'INFO' : 'PENDIENTE';
     const detail = result.error ? ` - ${result.error}` : ` - registros: ${result.count}`;
     console.log(`${prefix} ${result.label}${detail}`);

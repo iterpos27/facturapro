@@ -21,19 +21,32 @@ export default function ProductManager() {
   const [showForm, setShowForm] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
 
-  useEffect(() => {
-    fetchProducts();
-    fetchMetadata();
-  }, []);
+  // Paginación server-side
+  const [page] = useState(1);
 
-  // Cargar productos del backend
-  const fetchProducts = async () => {
+  useEffect(() => {
+    fetchProducts(1, '');
+    fetchMetadata();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Cargar productos del backend con paginación y búsqueda
+  const fetchProducts = async (currentPage = 1, search = '', activo = statusFilter) => {
     setLoading(true);
     try {
-      const response = await apiFetch('/api/products');
+      const params = new URLSearchParams({
+        page: String(currentPage),
+        limit: '50',
+        ...(search ? { search } : {}),
+        ...(activo !== 'ALL' ? { activo: String(activo === 'ACTIVE') } : {}),
+      });
+      const response = await apiFetch(`/api/products?${params}`);
       if (!response.ok) throw new Error('Error al conectar con la base de datos.');
       const data = await response.json();
-      setProducts(data);
+      if (data && Array.isArray(data.data)) {
+        setProducts(data.data);
+      } else {
+        setProducts(Array.isArray(data) ? data : []);
+      }
     } catch (error) {
       console.error(error);
     } finally {
@@ -78,7 +91,7 @@ export default function ProductManager() {
 
   const handleSaveSuccess = () => {
     handleCloseForm();
-    fetchProducts();
+    fetchProducts(page, searchQuery);
   };
 
   // Eliminar un producto

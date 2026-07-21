@@ -11,6 +11,8 @@ export const getClientPhone = (client) => client?.telefono || client?.phone || '
 export const getClientEmail = (client) => client?.email || '';
 export const getClientAddress = (client) => client?.direccion || client?.address || '';
 
+const roundMoney = (value) => Math.round((Number(value) + Number.EPSILON) * 100) / 100;
+
 /**
  * Calcula los totales para un ítem/renglón de factura o proforma.
  */
@@ -21,13 +23,13 @@ export const calculateLineAmounts = (item) => {
   const discountAmount = parseFloat(item.descuento) || 0;
   const discountPercent = parseFloat(item.descuento_porcentaje) || 0;
 
-  const subtotal = quantity * price;
-  const iva = subtotal * (taxPercent / 100);
-  const finalBeforeDiscount = subtotal + iva;
+  const subtotal = roundMoney(quantity * price);
+  const iva = roundMoney(subtotal * (taxPercent / 100));
+  const finalBeforeDiscount = roundMoney(subtotal + iva);
 
-  const percentValue = finalBeforeDiscount * (discountPercent / 100);
-  const totalDiscount = Math.min(finalBeforeDiscount, discountAmount + percentValue);
-  const total = Math.max(finalBeforeDiscount - totalDiscount, 0);
+  const percentValue = roundMoney(finalBeforeDiscount * (discountPercent / 100));
+  const totalDiscount = roundMoney(Math.min(finalBeforeDiscount, discountAmount + percentValue));
+  const total = roundMoney(Math.max(finalBeforeDiscount - totalDiscount, 0));
 
   return {
     quantity,

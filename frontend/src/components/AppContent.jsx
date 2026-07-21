@@ -1,6 +1,7 @@
 import React, { Suspense, lazy } from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import DashboardHome from '../modules/dashboard/DashboardHome';
+import ErrorBoundary from './ErrorBoundary';
 
 // Code splitting: cada módulo se carga solo cuando se navega a él
 const ClientManager      = lazy(() => import('../modules/contacts/clients/ClientManager'));
@@ -42,9 +43,12 @@ function ModuleLoader() {
  * Si el rol no tiene permiso para la ruta activa, muestra "Acceso Denegado".
  */
 export default function AppContent({ permissions, currentUser, onNavigate }) {
+  const location = useLocation();
+
   return (
-    <Suspense fallback={<ModuleLoader />}>
-      <Routes>
+    <ErrorBoundary resetKey={location.pathname} onBack={() => onNavigate('/')}>
+      <Suspense fallback={<ModuleLoader />}>
+        <Routes>
         {/* Dashboard */}
         <Route
           path="/"
@@ -81,8 +85,9 @@ export default function AppContent({ permissions, currentUser, onNavigate }) {
 
         {/* Fallback */}
         <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    </Suspense>
+        </Routes>
+      </Suspense>
+    </ErrorBoundary>
   );
 }
 

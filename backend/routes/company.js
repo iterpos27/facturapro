@@ -5,6 +5,8 @@ const multer = require('multer');
 const router = express.Router();
 const db = require('../db');
 const { authenticateToken, authorizePermissions } = require('./auth');
+const { encryptSecret, redactCompany } = require('../utils/secrets');
+const { validate, schemas } = require('../middleware/validate');
 
 const certificatesDir = path.resolve(__dirname, '..', 'certificates');
 if (!fs.existsSync(certificatesDir)) {
@@ -61,12 +63,12 @@ router.use(authenticateToken);
 // 1. Obtener datos de la empresa (GET /api/company)
 router.get('/', async (req, res) => {
   try {
-    const result = await db.query('SELECT * FROM empresas LIMIT 1');
+    const result = await db.query('SELECT * FROM empresas ORDER BY id_empresa ASC LIMIT 1');
     if (result.rows.length === 0) {
       // Retornar un objeto vacío o iniciar con valores por defecto
       return res.json(null);
     }
-    res.json(result.rows[0]);
+    res.json(redactCompany(result.rows[0]));
   } catch (error) {
     console.error('Error al obtener datos de la empresa:', error);
     res.status(500).json({ error: 'Error al consultar los datos de la empresa.' });
@@ -74,7 +76,7 @@ router.get('/', async (req, res) => {
 });
 
 // 2. Guardar o actualizar datos de la empresa (POST /api/company)
-router.post('/', async (req, res) => {
+router.post('/', validate(schemas.updateCompany), async (req, res) => {
   const {
     ruc,
     razon_social,
@@ -91,6 +93,7 @@ router.post('/', async (req, res) => {
     certificado_clave,
     sri_endpoint_recepcion,
     sri_endpoint_autorizacion,
+    agente_retencion,
   } = req.body;
 
   if (!ruc || !razon_social || !direccion_matriz) {
@@ -99,7 +102,12 @@ router.post('/', async (req, res) => {
 
   try {
     // Verificar si ya existe una empresa registrada
-    const checkCompany = await db.query('SELECT id_empresa FROM empresas LIMIT 1');
+    const checkCompany = await db.query(
+      'SELECT id_empresa, certificado_clave FROM empresas ORDER BY id_empresa ASC LIMIT 1'
+    );
+    const storedCertificatePassword = certificado_clave
+      ? encryptSecret(certificado_clave)
+      : (checkCompany.rows[0]?.certificado_clave || '');
     
     let result;
     if (checkCompany.rows.length > 0) {
@@ -112,15 +120,18 @@ router.post('/', async (req, res) => {
              logo_url = $8, ambiente_sri = $9, tipo_emision = $10, certificado_path = $11,
              certificado_alias = $12, certificado_clave = $13,
              sri_endpoint_recepcion = $14, sri_endpoint_autorizacion = $15,
+             agente_retencion = $16,
              updated_at = CURRENT_TIMESTAMP
-         WHERE id_empresa = $16
+         WHERE id_empresa = $17
          RETURNING *`,
         [
           ruc, razon_social, nombre_comercial, direccion_matriz,
           obligado_contabilidad, contribuyente_especial, regimen,
           logo_url || '', ambiente_sri || 'PRUEBAS', tipo_emision || 'NORMAL',
-          certificado_path || '', certificado_alias || '', certificado_clave || '',
-          sri_endpoint_recepcion || '', sri_endpoint_autorizacion || '', companyId,
+          certificado_path || '', certificado_alias || '', storedCertificatePassword,
+          sri_endpoint_recepcion || '', sri_endpoint_autorizacion || '',
+          agente_retencion || '',
+          companyId,
         ]
       );
     } else {
@@ -130,21 +141,22 @@ router.post('/', async (req, res) => {
           ruc, razon_social, nombre_comercial, direccion_matriz, obligado_contabilidad,
           contribuyente_especial, regimen, logo_url, ambiente_sri, tipo_emision,
           certificado_path, certificado_alias, certificado_clave,
-          sri_endpoint_recepcion, sri_endpoint_autorizacion
+          sri_endpoint_recepcion, sri_endpoint_autorizacion, agente_retencion
         )
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
          RETURNING *`,
         [
           ruc, razon_social, nombre_comercial, direccion_matriz,
           obligado_contabilidad, contribuyente_especial, regimen,
           logo_url || '', ambiente_sri || 'PRUEBAS', tipo_emision || 'NORMAL',
-          certificado_path || '', certificado_alias || '', certificado_clave || '',
+          certificado_path || '', certificado_alias || '', storedCertificatePassword,
           sri_endpoint_recepcion || '', sri_endpoint_autorizacion || '',
+          agente_retencion || '',
         ]
       );
     }
 
-    res.json(result.rows[0]);
+    res.json(redactCompany(result.rows[0]));
   } catch (error) {
     console.error('Error al guardar datos de la empresa:', error);
     res.status(500).json({ error: 'Error al procesar la configuración de la empresa.' });

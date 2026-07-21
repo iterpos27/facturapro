@@ -30,6 +30,9 @@ function generarClaveAccesoSRI({
   tipoEmision = '1',
 }) {
   const dateObj = new Date(fechaEmision);
+  if (Number.isNaN(dateObj.getTime())) {
+    throw new Error('La fecha de emision no es valida para generar la clave de acceso SRI.');
+  }
   const dd = String(dateObj.getDate()).padStart(2, '0');
   const mm = String(dateObj.getMonth() + 1).padStart(2, '0');
   const yyyy = String(dateObj.getFullYear());
@@ -39,13 +42,19 @@ function generarClaveAccesoSRI({
   if (!/^\d{13}$/.test(rucStr)) {
     throw new Error('Configure un RUC de empresa valido para generar la clave de acceso SRI.');
   }
-  const ambienteStr = String(ambiente);
-  const serie = `${String(establecimiento).padStart(3, '0')}${String(puntoEmision).padStart(3, '0')}`;
-  const secuencialStr = String(secuencial).padStart(9, '0');
-  const codigoStr = String(codigoNumerico).padStart(8, '0');
-  const emisionStr = String(tipoEmision);
+  const ambienteStr = String(ambiente).replace(/\D/g, '') || '1';
+  const tipoComprobanteStr = String(tipoComprobante).replace(/\D/g, '').padStart(2, '0').slice(-2);
+  const establecimientoStr = String(establecimiento).replace(/\D/g, '').padStart(3, '0').slice(-3);
+  const puntoEmisionStr = String(puntoEmision).replace(/\D/g, '').padStart(3, '0').slice(-3);
+  const serie = `${establecimientoStr}${puntoEmisionStr}`;
+  const secuencialStr = String(secuencial).replace(/\D/g, '').padStart(9, '0').slice(-9);
+  const codigoStr = String(codigoNumerico).replace(/\D/g, '').padStart(8, '0').slice(-8);
+  const emisionStr = String(tipoEmision).replace(/\D/g, '') || '1';
 
-  const claveSinDigito = `${fechaStr}${tipoComprobante}${rucStr}${ambienteStr}${serie}${secuencialStr}${codigoStr}${emisionStr}`;
+  const claveSinDigito = `${fechaStr}${tipoComprobanteStr}${rucStr}${ambienteStr.slice(-1)}${serie}${secuencialStr}${codigoStr}${emisionStr.slice(-1)}`;
+  if (!/^\d{48}$/.test(claveSinDigito)) {
+    throw new Error('No se pudo generar una clave de acceso SRI valida. Revise fecha, serie y secuencial del documento.');
+  }
   const digitoVerificador = calcularModulo11(claveSinDigito);
   return `${claveSinDigito}${digitoVerificador}`;
 }
@@ -59,6 +68,9 @@ function claveAccesoPerteneceAlRuc(claveAcceso, ruc) {
 const normalizeText = (value, fallback = '') => String(value ?? fallback).trim();
 const money = (value) => (Math.round((parseFloat(value) || 0) * 100) / 100).toFixed(2);
 const quantity = (value) => (Math.round((parseFloat(value) || 0) * 1000000) / 1000000).toFixed(6);
+const WITHHOLDING_PERCENT_BY_CODE = {
+  312: 2.00,
+};
 
 function escapeXml(value) {
   return normalizeText(value)
@@ -99,7 +111,11 @@ function getCodigoPorcentajeIva(percent) {
 }
 
 function parseSerie(numeroFactura = '') {
-  const [estab = '001', ptoEmi = '001', secuencial = '000000001'] = String(numeroFactura).split('-');
+  const numericParts = String(numeroFactura)
+    .split('-')
+    .map((part) => part.replace(/\D/g, ''))
+    .filter(Boolean);
+  const [estab = '001', ptoEmi = '001', secuencial = '000000001'] = numericParts.slice(-3);
   return {
     estab: estab.padStart(3, '0').slice(-3),
     ptoEmi: ptoEmi.padStart(3, '0').slice(-3),
@@ -209,11 +225,11 @@ function buildFacturaXml({ invoice, details = [], payments = [], company, ambien
     <estab>${escapeXml(serie.estab)}</estab>
     <ptoEmi>${escapeXml(serie.ptoEmi)}</ptoEmi>
     <secuencial>${escapeXml(serie.secuencial)}</secuencial>
-    <dirMatriz>${escapeXml(company.direccion_matriz)}</dirMatriz>
+    <dirMatriz>${escapeXml(company.direccion_matriz)}</dirMatriz>${company.agente_retencion ? `\n    <agenteRetencion>${escapeXml(company.agente_retencion)}</agenteRetencion>` : ''}${company.regimen && company.regimen.toUpperCase().includes('RIMPE') ? `\n    <contribuyenteRimpe>CONTRIBUYENTE RÉGIMEN RIMPE</contribuyenteRimpe>` : ''}
   </infoTributaria>
   <infoFactura>
     <fechaEmision>${formatSriDate(invoice.fecha_emision)}</fechaEmision>
-    <dirEstablecimiento>${escapeXml(invoice.sucursal_direccion || company.direccion_matriz)}</dirEstablecimiento>
+    <dirEstablecimiento>${escapeXml(invoice.sucursal_direccion || company.direccion_matriz)}</dirEstablecimiento>${company.contribuyente_especial ? `\n    <contribuyenteEspecial>${escapeXml(company.contribuyente_especial)}</contribuyenteEspecial>` : ''}
     <obligadoContabilidad>${company.obligado_contabilidad ? 'SI' : 'NO'}</obligadoContabilidad>
     <tipoIdentificacionComprador>${getTipoIdentificacion(invoice.cliente_identificacion)}</tipoIdentificacionComprador>
     <razonSocialComprador>${escapeXml(invoice.cliente_nombre)}</razonSocialComprador>
@@ -324,14 +340,14 @@ function buildNotaCreditoXml({ creditNote, details = [], company, ambiente = 'PR
     <estab>${escapeXml(serie.estab)}</estab>
     <ptoEmi>${escapeXml(serie.ptoEmi)}</ptoEmi>
     <secuencial>${escapeXml(serie.secuencial)}</secuencial>
-    <dirMatriz>${escapeXml(company.direccion_matriz)}</dirMatriz>
+    <dirMatriz>${escapeXml(company.direccion_matriz)}</dirMatriz>${company.agente_retencion ? `\n    <agenteRetencion>${escapeXml(company.agente_retencion)}</agenteRetencion>` : ''}${company.regimen && company.regimen.toUpperCase().includes('RIMPE') ? `\n    <contribuyenteRimpe>CONTRIBUYENTE RÉGIMEN RIMPE</contribuyenteRimpe>` : ''}
   </infoTributaria>
   <infoNotaCredito>
     <fechaEmision>${formatSriDate(creditNote.fecha_emision)}</fechaEmision>
     <dirEstablecimiento>${escapeXml(creditNote.sucursal_direccion || company.direccion_matriz)}</dirEstablecimiento>
     <tipoIdentificacionComprador>${getTipoIdentificacion(creditNote.cliente_identificacion)}</tipoIdentificacionComprador>
     <razonSocialComprador>${escapeXml(creditNote.cliente_nombre)}</razonSocialComprador>
-    <identificacionComprador>${escapeXml(creditNote.cliente_identificacion)}</identificacionComprador>
+    <identificacionComprador>${escapeXml(creditNote.cliente_identificacion)}</identificacionComprador>${company.contribuyente_especial ? `\n    <contribuyenteEspecial>${escapeXml(company.contribuyente_especial)}</contribuyenteEspecial>` : ''}
     <obligadoContabilidad>${company.obligado_contabilidad ? 'SI' : 'NO'}</obligadoContabilidad>
     <codDocModificado>01</codDocModificado>
     <numDocModificado>${escapeXml(creditNote.numero_factura)}</numDocModificado>
@@ -375,8 +391,18 @@ function buildRetencionXml({ withholding, details = [], company, ambiente = 'PRU
   });
 
   const normalizeSupportNumber = (value) => {
-    const digits = normalizeText(value).replace(/\D/g, '');
-    return digits || normalizeText(value);
+    const raw = normalizeText(value);
+    const parts = raw.split('-').map((part) => part.replace(/\D/g, '')).filter(Boolean);
+    if (parts.length >= 3) {
+      const [estab, ptoEmi, secuencial] = parts.slice(-3);
+      return `${estab.padStart(3, '0').slice(-3)}${ptoEmi.padStart(3, '0').slice(-3)}${secuencial.padStart(9, '0').slice(-9)}`;
+    }
+
+    const digits = raw.replace(/\D/g, '');
+    if (digits.length > 6 && digits.length < 15) {
+      return `${digits.slice(0, 3)}${digits.slice(3, 6)}${digits.slice(6).padStart(9, '0').slice(-9)}`;
+    }
+    return digits.padStart(15, '0').slice(-15);
   };
   const periodDate = withholding.fecha_compra || withholding.fecha_emision || new Date();
   const dateObj = new Date(periodDate);
@@ -384,13 +410,19 @@ function buildRetencionXml({ withholding, details = [], company, ambiente = 'PRU
 
   const impuestosXml = details.map((detail) => {
     const isIva = normalizeText(detail.impuesto).toUpperCase().includes('IVA');
+    const code = normalizeText(detail.codigo_sri);
+    const base = parseFloat(detail.base_imponible) || 0;
+    const percentage = WITHHOLDING_PERCENT_BY_CODE[code] ?? (parseFloat(detail.porcentaje) || 0);
+    const withheldValue = WITHHOLDING_PERCENT_BY_CODE[code] !== undefined
+      ? base * (percentage / 100)
+      : parseFloat(detail.valor_retenido || 0);
     return `
     <impuesto>
       <codigo>${isIva ? '2' : '1'}</codigo>
-      <codigoRetencion>${escapeXml(detail.codigo_sri)}</codigoRetencion>
-      <baseImponible>${money(detail.base_imponible)}</baseImponible>
-      <porcentajeRetener>${money(detail.porcentaje)}</porcentajeRetener>
-      <valorRetenido>${money(detail.valor_retenido)}</valorRetenido>
+      <codigoRetencion>${escapeXml(code)}</codigoRetencion>
+      <baseImponible>${money(base)}</baseImponible>
+      <porcentajeRetener>${money(percentage)}</porcentajeRetener>
+      <valorRetenido>${money(withheldValue)}</valorRetenido>
       <codDocSustento>01</codDocSustento>
       <numDocSustento>${escapeXml(normalizeSupportNumber(withholding.numero_factura_compra))}</numDocSustento>
       <fechaEmisionDocSustento>${formatSriDate(withholding.fecha_compra)}</fechaEmisionDocSustento>
@@ -410,11 +442,11 @@ function buildRetencionXml({ withholding, details = [], company, ambiente = 'PRU
     <estab>${escapeXml(serie.estab)}</estab>
     <ptoEmi>${escapeXml(serie.ptoEmi)}</ptoEmi>
     <secuencial>${escapeXml(serie.secuencial)}</secuencial>
-    <dirMatriz>${escapeXml(company.direccion_matriz)}</dirMatriz>
+    <dirMatriz>${escapeXml(company.direccion_matriz)}</dirMatriz>${company.agente_retencion ? `\n    <agenteRetencion>${escapeXml(company.agente_retencion)}</agenteRetencion>` : ''}${company.regimen && company.regimen.toUpperCase().includes('RIMPE') ? `\n    <contribuyenteRimpe>CONTRIBUYENTE RÉGIMEN RIMPE</contribuyenteRimpe>` : ''}
   </infoTributaria>
   <infoCompRetencion>
     <fechaEmision>${formatSriDate(withholding.fecha_emision)}</fechaEmision>
-    <dirEstablecimiento>${escapeXml(company.direccion_matriz)}</dirEstablecimiento>
+    <dirEstablecimiento>${escapeXml(company.direccion_matriz)}</dirEstablecimiento>${company.contribuyente_especial ? `\n    <contribuyenteEspecial>${escapeXml(company.contribuyente_especial)}</contribuyenteEspecial>` : ''}
     <obligadoContabilidad>${company.obligado_contabilidad ? 'SI' : 'NO'}</obligadoContabilidad>
     <tipoIdentificacionSujetoRetenido>${getTipoIdentificacion(withholding.proveedor_identificacion)}</tipoIdentificacionSujetoRetenido>
     <razonSocialSujetoRetenido>${escapeXml(withholding.proveedor_nombre)}</razonSocialSujetoRetenido>
