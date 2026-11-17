@@ -1,127 +1,88 @@
 # FacturaPro
 
-Sistema comercial integrado para facturacion, inventario, caja, documentos electronicos SRI y gestion de cobranza.
+Sistema comercial para ventas, compras, inventario, caja, cobranza y comprobantes electrónicos del SRI de Ecuador. Incluye una API en **Express + PostgreSQL** y una interfaz en **React + Vite + CoreUI**.
 
-## Estado actual
+> Estado al 17 de noviembre de 2026: el flujo electrónico funciona en el ambiente **PRUEBAS** para facturas, notas de crédito y retenciones. El paso a **PRODUCCIÓN** permanece bloqueado mientras se completan las validaciones operativas y tributarias indicadas abajo.
 
-FacturaPro esta organizado como una aplicacion full stack:
+## Qué está implementado
 
-- `backend/`: API REST en Express, PostgreSQL, autenticacion JWT, permisos, auditoria, migraciones y servicios SRI.
-- `frontend/`: interfaz React + Vite + CoreUI separada por modulos.
-- `coreui-free-react-admin-template-main/`: referencia local del template base, excluida del flujo principal.
+- Usuarios, autenticación JWT, roles, permisos y auditoría básica.
+- Empresa, sucursales, cajas, bancos y secuenciales por documento y punto de emisión.
+- Clientes, proveedores, productos, categorías, compras, cuentas por pagar, inventario, kardex y costo promedio.
+- Proformas, facturas, notas de crédito, retenciones, cuentas por cobrar, abonos y gestiones de cobranza.
+- Apertura, movimientos y cierre de caja; reportes comerciales y exportación a Excel.
+- PDF desde el backend para proformas y RIDE de facturas, notas de crédito y retenciones.
+- Generación y firma de XML, recepción y consulta de autorización SRI para los tres tipos de comprobante. La emisión crea una cola dentro de la transacción comercial; un trabajador despacha los pendientes de PRUEBAS y reconsulta estados inciertos sin retransmitirlos.
+- Panel **Control SRI** con indicadores, filtros, consulta por clave y reconsulta individual. Historial de intentos de correo y envío manual de comprobantes autorizados con XML y RIDE PDF.
+- Scripts de migración, respaldo, restauración y chequeo previo a producción.
 
-## Modulos principales
+## Qué se ha verificado
 
-- Dashboard con metricas comerciales.
-- Clientes y proveedores.
-- Productos, categorias, inventario y movimientos.
-- Compras e ingreso de productos por factura de compra.
-- Proformas con registro persistente, edicion con clave y facturacion desde proforma.
-- Facturacion contado/credito con pagos, anticipos, cambio, descuentos y RIDE interno.
-- Cuentas por cobrar con abonos, vencimientos, estados de cobranza y gestiones.
-- Caja chica con apertura, cierre, denominaciones, ventas credito/contado, cobros CxC y notas de credito.
-- Notas de credito y retenciones con RIDE interno.
-- Secuenciales por documento, sucursal y punto de emision.
-- Reportes con filtros y exportacion.
-- Auditoria basica de acciones sensibles.
-- Configuracion de empresa, logo, certificado, endpoints y parametros SRI.
-- SRI en ambiente de pruebas para factura, nota de credito y retenciones.
+- En SRI **PRUEBAS** se emitieron y autorizaron comprobantes nuevos de los tipos 01 (factura), 04 (nota de crédito) y 07 (retención). Una consulta posterior al servicio oficial confirmó sus números de autorización y los XML guardados contienen firma. Se generaron sus RIDE PDF.
+- La anulación local de una factura autorizada fue rechazada sin alterar su estado. El transporte de correo se probó con SMTP simulado; **la entrega a destinatarios reales sigue pendiente**.
+- La suite local del backend pasó **62 pruebas**; también pasaron el lint y la compilación del frontend el 17 de noviembre de 2026. Estas comprobaciones no sustituyen una prueba operativa completa ni certifican cumplimiento tributario.
 
-## Requisitos
+## Qué falta
 
-- Node.js 20 o superior.
-- PostgreSQL.
-- Certificado `.p12` o `.pfx` para pruebas SRI reales.
+### Antes de producción
 
-## Configuracion local
+1. Configurar SMTP y verificar, con autorización expresa, la entrega real de XML autorizado y RIDE PDF. Definir reintentos y seguimiento de fallos de correo.
+2. Probar una caída, un timeout y un reinicio reales entre recepción y autorización SRI; comprobar la recuperación y que no haya envíos duplicados. Completar alertas y trazabilidad de reintentos.
+3. Investigar y conciliar registros históricos cuyo estado local difiere de la consulta oficial del SRI. Las autorizaciones de comprobantes nuevos no resuelven esas diferencias anteriores.
+4. Validar XML, impuestos, descuentos, identificaciones, redondeos y RIDE frente a la ficha técnica y los XSD vigentes del SRI, con casos aceptados y rechazados.
+5. Verificar el trámite de anulación en el portal SRI PRUEBAS y definir cómo reflejar su resultado. Una anulación interna no equivale a una anulación tributaria.
+6. Completar el recorrido operativo con distintos roles: compra → inventario → venta → cobro/caja → devolución → reportes. Revisar permisos, cambiar contraseñas iniciales, configurar HTTPS y secretos, y comprobar respaldo externo y restauración.
 
-1. Crear `backend/.env` desde `backend/.env.example`.
-2. Crear `frontend/.env` desde `frontend/.env.example`.
-3. Instalar dependencias:
+### Mejoras posteriores
+
+- Completar archivo y descarga histórica de XML/RIDE, y respaldar esos documentos junto con la base de datos.
+- Conciliar fórmulas y filtros de reportes; permitir exportaciones completas y agregar reportes transaccionales detallados.
+- Verificar paginación, permisos de otros roles y acciones del panel Control SRI con más de 25 comprobantes.
+- Priorizar guía de remisión electrónica, nota de débito y liquidación de compra según las necesidades del negocio. La guía de remisión todavía no está implementada.
+
+El detalle y la evidencia de cada pendiente están en [la lista de verificación](docs/CHECKLIST_ROADMAP.md) y [el plan de salida a producción](docs/PLAN_SALIDA_PRODUCCION_2026-11-13.md). El [manual operativo](docs/MANUAL_OPERATIVO.md) describe el uso de los módulos existentes.
+
+## Requisitos y configuración local
+
+- Node.js y npm; PostgreSQL.
+- Para pruebas reales con SRI, un certificado de firma `.p12` o `.pfx` válido y una empresa configurada en PRUEBAS.
+
+1. Crear `backend/.env` desde [`backend/.env.example`](backend/.env.example) y `frontend/.env` desde [`frontend/.env.example`](frontend/.env.example). Configurar la base de datos y reemplazar `JWT_SECRET` por un valor seguro. Los archivos `.env` y certificados están excluidos de Git.
+2. Instalar dependencias y ejecutar las migraciones:
 
 ```bash
 cd backend
 npm install
+npm run db:migrate:all
 
 cd ../frontend
 npm install
 ```
 
-4. Ejecutar migraciones:
-
-```bash
-cd backend
-npm run db:migrate:all
-```
-
-## Ejecucion local
-
-Backend:
+3. Iniciar cada servicio en una terminal diferente:
 
 ```bash
 cd backend
 npm start
 ```
 
-Frontend:
-
 ```bash
 cd frontend
 npm run dev
 ```
 
-## Scripts utiles
+## Comprobaciones útiles
 
-Backend:
+```bash
+# Desde backend/
+node --test tests/*.test.js
+npm run preprod:check
+npm run db:backup
+npm run db:restore-check
 
-- `npm start`
-- `npm run db:migrate:all`
-- `npm run db:migrate:sri-test`
-- `npm run db:migrate:sri-complementary`
-- `npm run db:migrate:sequentials-permissions`
-- `npm run db:migrate:credit-collections`
-- `npm run db:drop`
+# Desde frontend/
+npm run lint
+npm run build
+```
 
-Frontend:
-
-- `npm run dev`
-- `npm run build`
-- `npm run lint`
-- `npm run preview`
-
-## Seguridad
-
-- Autenticacion JWT.
-- Permisos por modulo y rutas protegidas.
-- `helmet` para cabeceras HTTP defensivas.
-- `express-rate-limit` para limitar abuso de API.
-- Validacion de payloads con Joi en rutas sensibles.
-- `JWT_SECRET` seguro obligatorio en produccion.
-
-## SRI
-
-El sistema trabaja con ambiente `PRUEBAS` y permite:
-
-- Generar XML.
-- Firmar con certificado local.
-- Enviar a recepcion SRI.
-- Consultar autorizacion.
-- Guardar estado, mensajes, clave de acceso, numero y fecha de autorizacion.
-
-Documentos cubiertos:
-
-- Factura electronica.
-- Nota de credito.
-- Comprobante de retencion.
-
-## Pendientes recomendados
-
-- Completar validacion manual SRI con datos reales para todos los documentos.
-- Historial de envio de correos con XML y RIDE.
-- RIDE PDF generado desde backend para proformas, facturas, notas de credito y retenciones.
-- Backup/restauracion PostgreSQL con `npm run db:backup` y `npm run db:restore`.
-- Manual operativo en `docs/MANUAL_OPERATIVO.md`.
-- Cuentas por pagar para compras a credito.
-- Kardex valorizado y costo promedio.
-- Backup automatico de PostgreSQL y prueba de restauracion.
-- Manual operativo para usuario final.
+`preprod:check` evalúa la configuración local; un resultado favorable no habilita por sí solo el ambiente de PRODUCCIÓN.
