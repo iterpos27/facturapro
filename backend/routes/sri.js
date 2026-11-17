@@ -1,6 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
+const { assertTransmissionDate } = require('../utils/sri_workflow');
+const { requireSingleCompany } = require('../utils/sri_readiness');
+const { confirmReceptionAndAuthorize } = require('../services/sri_reception');
+const { refreshSriRecord } = require('../services/sri_monitor');
 const { writeAudit } = require('../utils/audit');
 const {
   buildFacturaXml,
@@ -12,14 +16,16 @@ const {
   getSriEndpoints,
   validateCertificateConfig,
   signXmlWithCertificate,
+  hasEmbeddedSignature,
   sendReceipt,
-  authorizeReceipt,
 } = require('../services/sri_service');
 const { authenticateToken, authorizePermissions } = require('./auth');
 const { sendAuthorizedDocument } = require('../services/email_service');
+const { loadRide, renderRidePdfBuffer } = require('../services/ride_service');
 
 // Proteger todas las rutas de SRI con autenticación y autorización
 router.use(authenticateToken);
+router.use(require('./sri_monitor'));
 
 const getCurrentUserId = (req) => req.user?.id_usuario || req.user?.id || null;
 const normalize = (value) => String(value || '').trim();
@@ -136,17 +142,11 @@ async function loadEmailDocument(tipoComprobante, idDocumento) {
     throw new Error('El comprobante debe estar AUTORIZADO por SRI antes de enviarlo por email.');
   }
   const document = documentRes.rows[0];
-  let totalRetenido = 0;
-  if (tipoComprobante === '07') {
-    const retRes = await db.query('SELECT COALESCE(SUM(valor_retenido), 0) AS total FROM retencion_detalles WHERE id_retencion = $1', [idDocumento]);
-    totalRetenido = retRes.rows[0]?.total || 0;
-  }
   return {
     config,
     document,
     sri,
     company: companyRes.rows[0] || {},
-    totalRetenido,
   };
 }
 
@@ -176,21 +176,29 @@ async function registerEmailAttempt({ tipoComprobante, idDocumento, numeroCompro
 }
 
 async function sendSriDocumentEmail({ tipoComprobante, idDocumento, userId }) {
-  const { config, document, sri, company, totalRetenido } = await loadEmailDocument(tipoComprobante, idDocumento);
+  const { config, document, sri, company } = await loadEmailDocument(tipoComprobante, idDocumento);
   const to = document[config.recipientEmail];
   const docNumber = document[config.numberField];
   const xml = sri.xml_firmado || sri.xml_generado || document.xml_generado || '';
-  const rideHtml = buildRideHtml({ company, document, config, sri, totalRetenido });
-  const result = await sendAuthorizedDocument({
-    to,
-    clientName: document[config.recipientName],
-    docNumber,
-    docType: config.label,
-    authNumber: sri.numero_autorizacion || document.sri_numero_autorizacion || sri.clave_acceso,
-    xml,
-    rideHtml,
-    companyName: company.razon_social,
-  });
+  const rideType = { '01': 'invoice', '04': 'credit-note', '07': 'withholding' }[tipoComprobante];
+  let ridePdf;
+  let result;
+  try {
+    if (!hasEmbeddedSignature(xml)) throw new Error('El XML autorizado no tiene una firma válida para adjuntar.');
+    ridePdf = await renderRidePdfBuffer(await loadRide(rideType, idDocumento));
+    result = await sendAuthorizedDocument({
+      to,
+      clientName: document[config.recipientName],
+      docNumber,
+      docType: config.label,
+      authNumber: sri.numero_autorizacion || document.sri_numero_autorizacion || sri.clave_acceso,
+      xml,
+      ridePdf,
+      companyName: company.razon_social,
+    });
+  } catch (error) {
+    result = { sent: false, error: error.message };
+  }
   const history = await registerEmailAttempt({
     tipoComprobante,
     idDocumento,
@@ -199,7 +207,7 @@ async function sendSriDocumentEmail({ tipoComprobante, idDocumento, userId }) {
     asunto: result.subject || `${config.label} No. ${docNumber}`,
     result,
     hasXml: Boolean(xml),
-    hasRide: Boolean(rideHtml),
+    hasRide: Boolean(ridePdf),
     userId,
   });
   return { result, history };
@@ -311,11 +319,8 @@ async function loadWithholdingForSri(client, idRetencion) {
 }
 
 async function loadCompany(client) {
-  const companyRes = await client.query('SELECT * FROM empresas LIMIT 1');
-  if (companyRes.rows.length === 0) {
-    throw new Error('Configure los datos de la empresa antes de procesar SRI.');
-  }
-  return companyRes.rows[0];
+  const companyRes = await client.query('SELECT * FROM empresas ORDER BY id_empresa LIMIT 2');
+  return requireSingleCompany(companyRes.rows);
 }
 
 async function ensureGeneratedInvoiceXml(client, idFactura, company) {
@@ -334,7 +339,10 @@ async function ensureGeneratedInvoiceXml(client, idFactura, company) {
   }
 
   const existingSri = sriRes.rows[0];
-  if (existingSri?.estado === 'AUTORIZADO') {
+  if (['PENDIENTE_ENVIO', 'ENVIANDO', 'RECIBIDO', 'EN_PROCESO', 'AUTORIZADO'].includes(existingSri?.estado)) {
+    if (!sriRecordMatchesCompany(existingSri, company)) {
+      throw new Error('El comprobante ya transmitido no coincide con la empresa; requiere revisión manual.');
+    }
     return existingSri;
   }
   if (sriRecordMatchesCompany(existingSri, company)) {
@@ -467,7 +475,10 @@ async function ensureGeneratedComplementaryXml(client, kind, idDocumento, compan
   }
 
   const existingSri = sriRes.rows[0];
-  if (existingSri?.estado === 'AUTORIZADO') {
+  if (['PENDIENTE_ENVIO', 'ENVIANDO', 'RECIBIDO', 'EN_PROCESO', 'AUTORIZADO'].includes(existingSri?.estado)) {
+    if (!sriRecordMatchesCompany(existingSri, company)) {
+      throw new Error('El comprobante ya transmitido no coincide con la empresa; requiere revisión manual.');
+    }
     return existingSri;
   }
   if (sriRecordMatchesCompany(existingSri, company)) {
@@ -556,13 +567,26 @@ async function generateComplementaryXmlHandler(req, res, kind) {
 async function processComplementarySriHandler(req, res, kind) {
   const client = await db.pool.connect();
   const config = documentConfigOrFail(kind);
+  let locked = false;
   try {
+    const lock = await client.query('SELECT pg_try_advisory_lock($1::integer, $2::integer) AS locked', [720000 + Number(config.tipo), Number(req.params.id)]);
+    locked = lock.rows[0]?.locked === true;
+    if (!locked) return res.status(409).json({ error: 'Este comprobante ya se está procesando para SRI.' });
     await client.query('BEGIN');
 
     const company = await loadCompany(client);
     let sri = await ensureGeneratedComplementaryXml(client, kind, req.params.id, company);
+    // Un comprobante recibido se consulta; uno autorizado nunca se vuelve a transmitir.
+    if (['ENVIANDO', 'RECIBIDO', 'EN_PROCESO', 'AUTORIZADO'].includes(sri.estado)) {
+      await client.query('COMMIT');
+      const recovered = await refreshSriRecord(sri.id_sri, getCurrentUserId(req), { client });
+      return res.json({ estado: recovered.estado, ambiente: recovered.ambiente,
+        clave_acceso: recovered.clave_acceso, numero_autorizacion: recovered.numero_autorizacion,
+        mensajes: recovered.mensajes, sri: recovered });
+    }
+    assertTransmissionDate(sri.xml_firmado || sri.xml_generado);
     let signedXml = sri.xml_firmado;
-    if (!signedXml) {
+    if (!hasEmbeddedSignature(signedXml)) {
       signedXml = await signXmlWithCertificate(sri.xml_generado, company);
       const signedRes = await client.query(`
         UPDATE sri_comprobantes
@@ -579,7 +603,15 @@ async function processComplementarySriHandler(req, res, kind) {
       });
     }
 
+    await client.query("UPDATE sri_comprobantes SET estado = 'ENVIANDO', updated_at = CURRENT_TIMESTAMP WHERE id_sri = $1", [sri.id_sri]);
+    await updateComplementaryDocumentSri(client, config, sri.id_documento, { sri_estado: 'ENVIANDO' });
+    await client.query('COMMIT');
+    // Desde aquí un timeout deja ENVIANDO duradero; la recuperación solo consulta la clave.
     const reception = await sendReceipt(signedXml, company, sri.ambiente);
+    if (!['RECIBIDA', 'DEVUELTA'].includes(reception.estado)) {
+      throw new Error('Respuesta de recepción SRI incierta; consulte la clave antes de cualquier reenvío.');
+    }
+    await client.query('BEGIN');
     const receptionState = reception.estado === 'RECIBIDA' ? 'RECIBIDO' : 'DEVUELTO';
     if (receptionState !== 'RECIBIDO') {
       const messages = reception.mensajes || [];
@@ -605,62 +637,21 @@ async function processComplementarySriHandler(req, res, kind) {
       });
     }
 
-    const authorization = await authorizeReceipt(sri.clave_acceso, company, sri.ambiente);
-    const finalState = authorization.estado === 'AUTORIZADO' ? 'AUTORIZADO' : 'NO_AUTORIZADO';
-    const messages = authorization.mensajes || [];
-    const updated = await client.query(`
-      UPDATE sri_comprobantes
-      SET estado = $2,
-          numero_autorizacion = $3,
-          fecha_autorizacion = NULLIF($4, '')::timestamp,
-          mensajes = $5::jsonb,
-          updated_at = CURRENT_TIMESTAMP
-      WHERE id_sri = $1
-      RETURNING *
-    `, [sri.id_sri, finalState, authorization.numeroAutorizacion || null, authorization.fechaAutorizacion || '', JSON.stringify(messages)]);
-
-    await updateComplementaryDocumentSri(client, config, sri.id_documento, {
-      sri_estado: finalState,
-      sri_numero_autorizacion: authorization.numeroAutorizacion || null,
-      sri_fecha_autorizacion: authorization.fechaAutorizacion || '',
-      sri_mensajes: messages,
-    });
-
-    await writeAudit(client, {
-      entity: config.auditEntity,
-      entityId: sri.id_documento,
-      action: 'PROCESAR_SRI_PRUEBAS',
-      userId: getCurrentUserId(req),
-      detail: {
-        clave_acceso: sri.clave_acceso,
-        recepcion: reception.estado,
-        autorizacion: finalState,
-        mensajes: messages,
-      },
-    });
-
-    await client.query('COMMIT');
-    if (finalState === 'AUTORIZADO') {
-      await sendSriDocumentEmail({
-        tipoComprobante: config.tipo,
-        idDocumento: sri.id_documento,
-        userId: getCurrentUserId(req),
-      }).catch((err) => console.error('Email no enviado:', err));
+    const recovered = await confirmReceptionAndAuthorize(client, sri, reception, getCurrentUserId(req));
+    if (recovered.estado === 'AUTORIZADO' && getCurrentUserId(req)) {
+      await sendSriDocumentEmail({ tipoComprobante: sri.tipo_comprobante,
+        idDocumento: sri.id_documento, userId: getCurrentUserId(req),
+      }).catch((error) => console.error('Email no enviado:', error));
     }
-    return res.json({
-      estado: finalState,
-      ambiente: sri.ambiente,
-      clave_acceso: sri.clave_acceso,
-      numero_autorizacion: authorization.numeroAutorizacion || null,
-      fecha_autorizacion: authorization.fechaAutorizacion || null,
-      mensajes: messages,
-      sri: updated.rows[0],
-    });
+    return res.json({ estado: recovered.estado, ambiente: recovered.ambiente,
+      clave_acceso: recovered.clave_acceso, numero_autorizacion: recovered.numero_autorizacion,
+      fecha_autorizacion: recovered.fecha_autorizacion, mensajes: recovered.mensajes, sri: recovered });
   } catch (error) {
     await client.query('ROLLBACK');
     console.error('Error al procesar SRI pruebas:', error);
     return res.status(400).json({ error: error.message || 'Error al procesar SRI en pruebas.' });
   } finally {
+    if (locked) await client.query('SELECT pg_advisory_unlock($1::integer, $2::integer)', [720000 + Number(config.tipo), Number(req.params.id)]);
     client.release();
   }
 }
@@ -722,6 +713,16 @@ router.post('/invoices/:id/generate-test-xml', async (req, res) => {
     await client.query('BEGIN');
 
     const company = await loadCompany(client);
+    const existing = await client.query(
+      "SELECT * FROM sri_comprobantes WHERE tipo_comprobante = '01' AND id_documento = $1 FOR UPDATE",
+      [req.params.id]
+    );
+    if (['PENDIENTE_ENVIO', 'ENVIANDO', 'RECIBIDO', 'EN_PROCESO', 'AUTORIZADO'].includes(existing.rows[0]?.estado)) {
+      const sri = existing.rows[0];
+      await client.query('COMMIT');
+      return res.json({ estado: sri.estado, ambiente: sri.ambiente,
+        clave_acceso: sri.clave_acceso, xml: sri.xml_generado, sri });
+    }
 
     const { invoice, details, payments } = await loadInvoiceForSri(client, req.params.id);
     if (invoice.estado === 'ANULADA') {
@@ -809,6 +810,9 @@ router.post('/invoices/:id/sign-test-xml', async (req, res) => {
 
     const company = await loadCompany(client);
     const sri = await ensureGeneratedInvoiceXml(client, req.params.id, company);
+    if (!['GENERADO', 'FIRMADO', 'DEVUELTO'].includes(sri.estado)) {
+      throw new Error('El comprobante ya está en cola, enviado o autorizado; no se puede volver a firmar.');
+    }
     const signedXml = await signXmlWithCertificate(sri.xml_generado, company);
 
     const updated = await client.query(`
@@ -854,13 +858,26 @@ router.post('/invoices/:id/sign-test-xml', async (req, res) => {
 
 router.post('/invoices/:id/send-test', async (req, res) => {
   const client = await db.pool.connect();
+  let locked = false;
   try {
+    const lock = await client.query('SELECT pg_try_advisory_lock($1::integer, $2::integer) AS locked', [720001, Number(req.params.id)]);
+    locked = lock.rows[0]?.locked === true;
+    if (!locked) return res.status(409).json({ error: 'Esta factura ya se está procesando para SRI.' });
     await client.query('BEGIN');
 
     const company = await loadCompany(client);
     let sri = await ensureGeneratedInvoiceXml(client, req.params.id, company);
+    // Un comprobante recibido se consulta; uno autorizado nunca se vuelve a transmitir.
+    if (['ENVIANDO', 'RECIBIDO', 'EN_PROCESO', 'AUTORIZADO'].includes(sri.estado)) {
+      await client.query('COMMIT');
+      const recovered = await refreshSriRecord(sri.id_sri, getCurrentUserId(req), { client });
+      return res.json({ estado: recovered.estado, ambiente: recovered.ambiente,
+        clave_acceso: recovered.clave_acceso, numero_autorizacion: recovered.numero_autorizacion,
+        mensajes: recovered.mensajes, sri: recovered });
+    }
+    assertTransmissionDate(sri.xml_firmado || sri.xml_generado);
     let signedXml = sri.xml_firmado;
-    if (!signedXml) {
+    if (!hasEmbeddedSignature(signedXml)) {
       signedXml = await signXmlWithCertificate(sri.xml_generado, company);
       const signedRes = await client.query(`
         UPDATE sri_comprobantes
@@ -873,7 +890,14 @@ router.post('/invoices/:id/send-test', async (req, res) => {
       sri = signedRes.rows[0];
     }
 
+    await client.query("UPDATE sri_comprobantes SET estado = 'ENVIANDO', updated_at = CURRENT_TIMESTAMP WHERE id_sri = $1", [sri.id_sri]);
+    await client.query("UPDATE facturas SET sri_estado = 'ENVIANDO' WHERE id_factura = $1", [sri.id_documento]);
+    await client.query('COMMIT');
     const reception = await sendReceipt(signedXml, company, sri.ambiente);
+    if (!['RECIBIDA', 'DEVUELTA'].includes(reception.estado)) {
+      throw new Error('Respuesta de recepción SRI incierta; consulte la clave antes de cualquier reenvío.');
+    }
+    await client.query('BEGIN');
     const estado = reception.estado === 'RECIBIDA' ? 'RECIBIDO' : 'DEVUELTO';
     const messages = reception.mensajes || [];
 
@@ -914,102 +938,47 @@ router.post('/invoices/:id/send-test', async (req, res) => {
     console.error('Error al enviar XML SRI pruebas:', error);
     res.status(400).json({ error: error.message || 'Error al enviar XML SRI en pruebas.' });
   } finally {
+    if (locked) await client.query('SELECT pg_advisory_unlock($1::integer, $2::integer)', [720001, Number(req.params.id)]);
     client.release();
   }
 });
 
-router.post('/invoices/:id/authorize-test', async (req, res) => {
-  const client = await db.pool.connect();
+// La autorización es una consulta y admite comprobantes históricos.
+router.post('/invoices/:id/authorize-test', authorizePermissions('SRI_PROCESS'), async (req, res) => {
   try {
-    await client.query('BEGIN');
-
-    const company = await loadCompany(client);
-    const sriRes = await client.query(`
-      SELECT *
-      FROM sri_comprobantes
-      WHERE tipo_comprobante = '01' AND id_documento = $1
-    `, [req.params.id]);
-    const sri = sriRes.rows[0];
-    if (!sri) {
-      throw new Error('Primero genere y envie el XML al SRI.');
-    }
-    if (!['RECIBIDO', 'AUTORIZADO'].includes(sri.estado)) {
-      throw new Error(`La factura debe estar RECIBIDA para consultar autorizacion. Estado actual: ${sri.estado}.`);
-    }
-
-    const authorization = await authorizeReceipt(sri.clave_acceso, company, sri.ambiente);
-    const estado = authorization.estado === 'AUTORIZADO' ? 'AUTORIZADO' : 'NO_AUTORIZADO';
-    const messages = authorization.mensajes || [];
-
-    const updated = await client.query(`
-      UPDATE sri_comprobantes
-      SET estado = $2,
-          numero_autorizacion = $3,
-          fecha_autorizacion = NULLIF($4, '')::timestamp,
-          mensajes = $5::jsonb,
-          updated_at = CURRENT_TIMESTAMP
-      WHERE id_sri = $1
-      RETURNING *
-    `, [sri.id_sri, estado, authorization.numeroAutorizacion || null, authorization.fechaAutorizacion || '', JSON.stringify(messages)]);
-
-    await client.query(`
-      UPDATE facturas
-      SET sri_estado = $2,
-          sri_numero_autorizacion = $3,
-          sri_fecha_autorizacion = NULLIF($4, '')::timestamp,
-          sri_mensajes = $5::jsonb
-      WHERE id_factura = $1
-    `, [sri.id_documento, estado, authorization.numeroAutorizacion || null, authorization.fechaAutorizacion || '', JSON.stringify(messages)]);
-
-    await writeAudit(client, {
-      entity: 'facturas',
-      entityId: sri.id_documento,
-      action: 'CONSULTAR_AUTORIZACION_SRI_PRUEBAS',
-      userId: getCurrentUserId(req),
-      detail: {
-        clave_acceso: sri.clave_acceso,
-        estado,
-        numero_autorizacion: authorization.numeroAutorizacion || null,
-        mensajes: messages,
-      },
-    });
-
-    await client.query('COMMIT');
-    if (estado === 'AUTORIZADO') {
-      await sendSriDocumentEmail({
-        tipoComprobante: '01',
-        idDocumento: sri.id_documento,
-        userId: getCurrentUserId(req),
-      }).catch((err) => console.error('Email no enviado:', err));
-    }
-
-    res.json({
-      estado,
-      ambiente: sri.ambiente,
-      clave_acceso: sri.clave_acceso,
-      numero_autorizacion: authorization.numeroAutorizacion || null,
-      fecha_autorizacion: authorization.fechaAutorizacion || null,
-      mensajes: messages,
-      sri: updated.rows[0],
-    });
+    const result = await db.query("SELECT id_sri FROM sri_comprobantes WHERE tipo_comprobante='01' AND id_documento=$1", [req.params.id]);
+    if (!result.rows[0]) return res.status(404).json({ error: 'Primero genere el comprobante SRI.' });
+    const sri = await refreshSriRecord(result.rows[0].id_sri, getCurrentUserId(req));
+    return res.json({ estado: sri.estado, ambiente: sri.ambiente, clave_acceso: sri.clave_acceso,
+      numero_autorizacion: sri.numero_autorizacion, fecha_autorizacion: sri.fecha_autorizacion,
+      mensajes: sri.mensajes, sri });
   } catch (error) {
-    await client.query('ROLLBACK');
-    console.error('Error al autorizar XML SRI:', error);
-    res.status(400).json({ error: error.message || 'Error al consultar autorizacion SRI.' });
-  } finally {
-    client.release();
+    return res.status(400).json({ error: error.message || 'No se pudo consultar autorización.' });
   }
 });
 
-router.post('/invoices/:id/process-test', authorizePermissions('SRI_PROCESS'), async (req, res) => {
+async function processInvoiceSriHandler(req, res) {
   const client = await db.pool.connect();
+  let locked = false;
   try {
+    const lock = await client.query('SELECT pg_try_advisory_lock($1::integer, $2::integer) AS locked', [720001, Number(req.params.id)]);
+    locked = lock.rows[0]?.locked === true;
+    if (!locked) return res.status(409).json({ error: 'Esta factura ya se está procesando para SRI.' });
     await client.query('BEGIN');
 
     const company = await loadCompany(client);
     let sri = await ensureGeneratedInvoiceXml(client, req.params.id, company);
+    // Un comprobante recibido se consulta; uno autorizado nunca se vuelve a transmitir.
+    if (['ENVIANDO', 'RECIBIDO', 'EN_PROCESO', 'AUTORIZADO'].includes(sri.estado)) {
+      await client.query('COMMIT');
+      const recovered = await refreshSriRecord(sri.id_sri, getCurrentUserId(req), { client });
+      return res.json({ estado: recovered.estado, ambiente: recovered.ambiente,
+        clave_acceso: recovered.clave_acceso, numero_autorizacion: recovered.numero_autorizacion,
+        mensajes: recovered.mensajes, sri: recovered });
+    }
+    assertTransmissionDate(sri.xml_firmado || sri.xml_generado);
     let signedXml = sri.xml_firmado;
-    if (!signedXml) {
+    if (!hasEmbeddedSignature(signedXml)) {
       signedXml = await signXmlWithCertificate(sri.xml_generado, company);
       const signedRes = await client.query(`
         UPDATE sri_comprobantes
@@ -1022,7 +991,14 @@ router.post('/invoices/:id/process-test', authorizePermissions('SRI_PROCESS'), a
       sri = signedRes.rows[0];
     }
 
+    await client.query("UPDATE sri_comprobantes SET estado = 'ENVIANDO', updated_at = CURRENT_TIMESTAMP WHERE id_sri = $1", [sri.id_sri]);
+    await client.query("UPDATE facturas SET sri_estado = 'ENVIANDO' WHERE id_factura = $1", [sri.id_documento]);
+    await client.query('COMMIT');
     const reception = await sendReceipt(signedXml, company, sri.ambiente);
+    if (!['RECIBIDA', 'DEVUELTA'].includes(reception.estado)) {
+      throw new Error('Respuesta de recepción SRI incierta; consulte la clave antes de cualquier reenvío.');
+    }
+    await client.query('BEGIN');
     const receptionState = reception.estado === 'RECIBIDA' ? 'RECIBIDO' : 'DEVUELTO';
     if (receptionState !== 'RECIBIDO') {
       const messages = reception.mensajes || [];
@@ -1050,68 +1026,26 @@ router.post('/invoices/:id/process-test', authorizePermissions('SRI_PROCESS'), a
       });
     }
 
-    const authorization = await authorizeReceipt(sri.clave_acceso, company, sri.ambiente);
-    const finalState = authorization.estado === 'AUTORIZADO' ? 'AUTORIZADO' : 'NO_AUTORIZADO';
-    const messages = authorization.mensajes || [];
-    const updated = await client.query(`
-      UPDATE sri_comprobantes
-      SET estado = $2,
-          numero_autorizacion = $3,
-          fecha_autorizacion = NULLIF($4, '')::timestamp,
-          mensajes = $5::jsonb,
-          updated_at = CURRENT_TIMESTAMP
-      WHERE id_sri = $1
-      RETURNING *
-    `, [sri.id_sri, finalState, authorization.numeroAutorizacion || null, authorization.fechaAutorizacion || '', JSON.stringify(messages)]);
-
-    await client.query(`
-      UPDATE facturas
-      SET sri_estado = $2,
-          sri_numero_autorizacion = $3,
-          sri_fecha_autorizacion = NULLIF($4, '')::timestamp,
-          sri_mensajes = $5::jsonb
-      WHERE id_factura = $1
-    `, [sri.id_documento, finalState, authorization.numeroAutorizacion || null, authorization.fechaAutorizacion || '', JSON.stringify(messages)]);
-
-    await writeAudit(client, {
-      entity: 'facturas',
-      entityId: sri.id_documento,
-      action: 'PROCESAR_SRI_PRUEBAS',
-      userId: getCurrentUserId(req),
-      detail: {
-        clave_acceso: sri.clave_acceso,
-        recepcion: reception.estado,
-        autorizacion: finalState,
-        mensajes: messages,
-      },
-    });
-
-    await client.query('COMMIT');
-    if (finalState === 'AUTORIZADO') {
-      await sendSriDocumentEmail({
-        tipoComprobante: '01',
-        idDocumento: sri.id_documento,
-        userId: getCurrentUserId(req),
-      }).catch((err) => console.error('Email no enviado:', err));
+    const recovered = await confirmReceptionAndAuthorize(client, sri, reception, getCurrentUserId(req));
+    if (recovered.estado === 'AUTORIZADO' && getCurrentUserId(req)) {
+      await sendSriDocumentEmail({ tipoComprobante: sri.tipo_comprobante,
+        idDocumento: sri.id_documento, userId: getCurrentUserId(req),
+      }).catch((error) => console.error('Email no enviado:', error));
     }
-
-    return res.json({
-      estado: finalState,
-      ambiente: sri.ambiente,
-      clave_acceso: sri.clave_acceso,
-      numero_autorizacion: authorization.numeroAutorizacion || null,
-      fecha_autorizacion: authorization.fechaAutorizacion || null,
-      mensajes: messages,
-      sri: updated.rows[0],
-    });
+    return res.json({ estado: recovered.estado, ambiente: recovered.ambiente,
+      clave_acceso: recovered.clave_acceso, numero_autorizacion: recovered.numero_autorizacion,
+      fecha_autorizacion: recovered.fecha_autorizacion, mensajes: recovered.mensajes, sri: recovered });
   } catch (error) {
     await client.query('ROLLBACK');
     console.error('Error al procesar SRI:', error);
     return res.status(400).json({ error: error.message || 'Error al procesar SRI.' });
   } finally {
+    if (locked) await client.query('SELECT pg_advisory_unlock($1::integer, $2::integer)', [720001, Number(req.params.id)]);
     client.release();
   }
-});
+}
+
+router.post('/invoices/:id/process-test', authorizePermissions('SRI_PROCESS'), processInvoiceSriHandler);
 
 router.get('/credit-notes/:id/status', async (req, res) => {
   try {
@@ -1194,5 +1128,46 @@ router.post('/emails/:type/:id/send', async (req, res) => {
     res.status(400).json({ error: error.message || 'Error al enviar comprobante por email.' });
   }
 });
+
+/** Registra el trabajo SRI dentro de la misma transacción que emite el documento. */
+async function queueIssuedDocument(client, kind, idDocumento) {
+  const company = await loadCompany(client);
+  if (normalize(company.ambiente_sri).toUpperCase() !== 'PRUEBAS') {
+    throw new Error('La emisión automática está habilitada únicamente en SRI PRUEBAS.');
+  }
+  const sri = kind === 'invoice'
+    ? await ensureGeneratedInvoiceXml(client, idDocumento, company)
+    : await ensureGeneratedComplementaryXml(client, kind, idDocumento, company);
+  if (sri.estado !== 'GENERADO') {
+    throw new Error('El comprobante ya tiene un proceso SRI; no se puede volver a poner en cola.');
+  }
+  await client.query("UPDATE sri_comprobantes SET estado = 'PENDIENTE_ENVIO', updated_at = CURRENT_TIMESTAMP WHERE id_sri = $1", [sri.id_sri]);
+  const config = kind === 'invoice'
+    ? { table: 'facturas', pk: 'id_factura' }
+    : documentConfigOrFail(kind);
+  await client.query(`UPDATE ${config.table} SET sri_estado = 'PENDIENTE_ENVIO' WHERE ${config.pk} = $1`, [idDocumento]);
+  return { ...sri, estado: 'PENDIENTE_ENVIO' };
+}
+
+function dispatchQueuedDocument({ tipo_comprobante: tipo, id_documento: idDocumento }) {
+  const handler = {
+    '01': processInvoiceSriHandler,
+    '04': (req, res) => processComplementarySriHandler(req, res, 'creditNote'),
+    '07': (req, res) => processComplementarySriHandler(req, res, 'withholding'),
+  }[tipo];
+  if (!handler) return Promise.reject(new Error('Tipo SRI no soportado.'));
+  return new Promise((resolve, reject) => {
+    const req = { params: { id: idDocumento }, user: null };
+    const res = {
+      statusCode: 200,
+      status(code) { this.statusCode = code; return this; },
+      json(body) { resolve({ statusCode: this.statusCode, body }); return this; },
+    };
+    Promise.resolve(handler(req, res)).catch(reject);
+  });
+}
+
+router.queueIssuedDocument = queueIssuedDocument;
+router.dispatchQueuedDocument = dispatchQueuedDocument;
 
 module.exports = router;

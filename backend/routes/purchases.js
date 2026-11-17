@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 const { writeAudit } = require('../utils/audit');
+const { publicCompany } = require('../utils/company_secrets');
 const { authenticateToken } = require('./auth');
 const { validate, schemas } = require('../middleware/validate');
 const { recordInventoryCostMovement } = require('../services/inventory_costing');
@@ -169,7 +170,7 @@ router.get('/:id', async (req, res) => {
     res.json({
       purchase: compraRes.rows[0],
       details: detallesRes.rows,
-      company: companyRes.rows[0] || null,
+      company: companyRes.rows[0] ? publicCompany(companyRes.rows[0]) : null,
     });
   } catch (error) {
     console.error('Error al obtener detalle de compra:', error);

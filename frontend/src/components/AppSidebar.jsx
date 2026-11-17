@@ -125,7 +125,7 @@ export default function AppSidebar({
 
         {/* Documentos */}
         {(permissions.proformas || permissions.invoices || permissions.receivables ||
-          permissions.creditnotes || permissions.withholdings || permissions.reports) &&
+          permissions.creditnotes || permissions.withholdings || permissions.reports || permissions.sri) &&
           renderSection('documentos', 'Documentos', (
             <>
               {permissions.proformas    && navLink('/proformas',      cilFile,         'Proformas')}
@@ -134,6 +134,7 @@ export default function AppSidebar({
               {permissions.creditnotes  && navLink('/notas-credito',  cilFile,         'Notas de Crédito')}
               {permissions.withholdings && navLink('/retenciones',    cilFile,         'Retenciones')}
               {permissions.reports      && navLink('/reportes',       cilSpeedometer,  'Reportes')}
+              {permissions.sri          && navLink('/sri',            cilTask,         'Control SRI')}
             </>
           ))}
 

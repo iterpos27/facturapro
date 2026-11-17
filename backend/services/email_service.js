@@ -2,7 +2,7 @@
  * email_service.js
  * Servicio de envío de correos para FacturaPro.
  * Usa nodemailer con SMTP configurable por variables de entorno.
- * Envía el RIDE HTML + XML adjunto al cliente tras la autorización SRI.
+ * Envía el RIDE PDF y XML adjuntos al cliente tras la autorización SRI.
  */
 
 const nodemailer = require('nodemailer');
@@ -47,7 +47,23 @@ function createTransporter() {
  * @param {string} opts.companyName - Nombre de la empresa emisora
  * @returns {Promise<{sent: boolean, error?: string}>}
  */
-async function sendAuthorizedDocument({ to, clientName, docNumber, docType, authNumber, xml, rideHtml, companyName }) {
+function buildDocumentAttachments({ docType, docNumber, authNumber, xml, ridePdf }) {
+  const stem = `${docType.replace(/\s/g, '_')}_${docNumber.replace(/\//g, '-')}`;
+  const attachments = [];
+  if (xml) attachments.push({
+    filename: `${stem}_${authNumber.slice(-8)}.xml`,
+    content: xml,
+    contentType: 'application/xml',
+  });
+  if (ridePdf) attachments.push({
+    filename: `${stem}_RIDE.pdf`,
+    content: ridePdf,
+    contentType: 'application/pdf',
+  });
+  return attachments;
+}
+
+async function sendAuthorizedDocument({ to, clientName, docNumber, docType, authNumber, xml, ridePdf, companyName }) {
   if (!to || !to.includes('@')) {
     logger.warn({ to }, 'Email de cliente no válido — no se enviará el comprobante.');
     return { sent: false, error: 'Email de cliente no válido.' };
@@ -80,8 +96,7 @@ async function sendAuthorizedDocument({ to, clientName, docNumber, docType, auth
         <p style="margin:4px 0;"><strong>Autorización SRI:</strong> <code style="font-size:.85rem;">${authNumber}</code></p>
       </div>
 
-      <p style="color:#555;">Adjunto encontrará el comprobante electrónico en formato XML, tal como lo exige el SRI.</p>
-      <p style="color:#555;">Para visualizar el RIDE (representación impresa), puede ingresar al sistema o solicitarlo al emisor.</p>
+      <p style="color:#555;">Adjunto encontrará el comprobante electrónico en XML y su representación impresa RIDE en PDF.</p>
 
       <hr style="border:none; border-top:1px solid #e5e7eb; margin:24px 0;">
       <p style="font-size:.82rem; color:#9ca3af; text-align:center;">
@@ -93,23 +108,7 @@ async function sendAuthorizedDocument({ to, clientName, docNumber, docType, auth
 </body>
 </html>`;
 
-  const xmlFilename = `${docType.replace(/\s/g, '_')}_${docNumber.replace(/\//g, '-')}_${authNumber.slice(-8)}.xml`;
-  const rideFilename = `${docType.replace(/\s/g, '_')}_${docNumber.replace(/\//g, '-')}_RIDE.html`;
-  const attachments = [];
-  if (xml) {
-    attachments.push({
-      filename: xmlFilename,
-      content: xml,
-      contentType: 'text/xml',
-    });
-  }
-  if (rideHtml) {
-    attachments.push({
-      filename: rideFilename,
-      content: rideHtml,
-      contentType: 'text/html',
-    });
-  }
+  const attachments = buildDocumentAttachments({ docType, docNumber, authNumber, xml, ridePdf });
 
   try {
     const info = await transporter.sendMail({
@@ -127,4 +126,4 @@ async function sendAuthorizedDocument({ to, clientName, docNumber, docType, auth
   }
 }
 
-module.exports = { sendAuthorizedDocument };
+module.exports = { sendAuthorizedDocument, buildDocumentAttachments };

@@ -2,7 +2,11 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 const { writeAudit } = require('../utils/audit');
-const { generarClaveAccesoSRI } = require('../utils/sri_utils');
+const { generarClaveAccesoParaEmpresa } = require('../utils/sri_utils');
+const { requireSingleCompany } = require('../utils/sri_readiness');
+const { queueIssuedDocument } = require('./sri');
+const { assertLocalCancellationAllowed } = require('../utils/sri_workflow');
+const { publicCompany } = require('../utils/company_secrets');
 const { authenticateToken, authorizePermissions } = require('./auth');
 const { validate, schemas } = require('../middleware/validate');
 const { formatDocumentNumber, getDefaultBranch, nextDocumentSequential } = require('../services/sequential_service');
@@ -67,7 +71,7 @@ router.get('/:id', async (req, res) => {
     res.json({
       withholding: retRes.rows[0],
       details: detallesRes.rows,
-      company: companyRes.rows[0] || null,
+      company: companyRes.rows[0] ? publicCompany(companyRes.rows[0]) : null,
     });
   } catch (error) {
     console.error('Error al obtener detalle de retención:', error);
@@ -104,16 +108,17 @@ router.post('/', async (req, res) => {
     const branch = await getDefaultBranch(client);
     const nextSeq = await nextDocumentSequential(client, branch.id_sucursal, 'RETENCION');
     const numero_retencion = formatDocumentNumber(branch, nextSeq);
-    const companyRes = await client.query('SELECT ruc FROM empresas LIMIT 1');
+    const companyRes = await client.query('SELECT ruc, ambiente_sri FROM empresas ORDER BY id_empresa LIMIT 2');
+    requireSingleCompany(companyRes.rows);
     if (companyRes.rows.length === 0 || !companyRes.rows[0].ruc) {
       throw new Error('Configure el RUC de la empresa antes de emitir retenciones.');
     }
 
-    const accessKey = generarClaveAccesoSRI({
+    const accessKey = generarClaveAccesoParaEmpresa({
       fechaEmision: new Date(),
       tipoComprobante: '07',
       ruc: companyRes.rows[0].ruc,
-      ambiente: '1',
+      ambiente_sri: companyRes.rows[0].ambiente_sri,
       establecimiento: branch.codigo_establecimiento,
       puntoEmision: branch.punto_emision,
       secuencial: nextSeq,
@@ -157,8 +162,9 @@ router.post('/', async (req, res) => {
       },
     });
 
+    await queueIssuedDocument(client, 'withholding', withholding.id_retencion);
     await client.query('COMMIT');
-    res.status(201).json(withholding);
+    res.status(201).json({ ...withholding, sri_estado: 'PENDIENTE_ENVIO' });
   } catch (error) {
     await client.query('ROLLBACK');
     console.error('Error al emitir retención:', error);
@@ -185,6 +191,8 @@ router.put('/:id/cancel', authorizePermissions('DOCUMENT_CANCEL'), async (req, r
     if (retRes.rows.length === 0) {
       throw new Error('Retencion no encontrada.');
     }
+    const sriRes = await client.query("SELECT estado FROM sri_comprobantes WHERE tipo_comprobante = '07' AND id_documento = $1 FOR UPDATE", [id]);
+    assertLocalCancellationAllowed(retRes.rows[0], sriRes.rows[0]);
     if (retRes.rows[0].estado === 'ANULADA') {
       throw new Error('La retencion ya se encuentra anulada.');
     }

@@ -8,6 +8,8 @@ export default function CompanyManager() {
 
   // Campos de la empresa
   const [ruc, setRuc] = useState('');
+  // Mantiene el proveedor separado del RUC de la empresa emisora.
+  const [rucProveedorSoftware, setRucProveedorSoftware] = useState('');
   const [razonSocial, setRazonSocial] = useState('');
   const [nombreComercial, setNombreComercial] = useState('');
   const [direccionMatriz, setDireccionMatriz] = useState('');
@@ -41,6 +43,7 @@ export default function CompanyManager() {
       const data = await readApiResponse(response);
       if (data) {
         setRuc(data.ruc);
+        setRucProveedorSoftware(data.ruc_proveedor_software || '');
         setRazonSocial(data.razon_social);
         setNombreComercial(data.nombre_comercial || '');
         setDireccionMatriz(data.direccion_matriz);
@@ -52,7 +55,7 @@ export default function CompanyManager() {
         setTipoEmision(data.tipo_emision || 'NORMAL');
         setCertificadoPath(data.certificado_path || '');
         setCertificadoAlias(data.certificado_alias || '');
-        setCertificadoClave(data.certificado_clave || '');
+        setCertificadoClave('');
         setSriEndpointRecepcion(data.sri_endpoint_recepcion || '');
         setSriEndpointAutorizacion(data.sri_endpoint_autorizacion || '');
       }
@@ -98,6 +101,7 @@ export default function CompanyManager() {
 
     const companyData = {
       ruc,
+      ruc_proveedor_software: rucProveedorSoftware.trim(),
       razon_social: razonSocial,
       nombre_comercial: nombreComercial,
       direccion_matriz: direccionMatriz,
@@ -210,6 +214,7 @@ export default function CompanyManager() {
       },
       body: JSON.stringify({
         ruc,
+        ruc_proveedor_software: rucProveedorSoftware.trim(),
         razon_social: razonSocial,
         nombre_comercial: nombreComercial,
         direccion_matriz: direccionMatriz,
@@ -368,6 +373,24 @@ export default function CompanyManager() {
               </div>
 
               {/* Fila 2: Nombre Comercial, Régimen */}
+              {/* Identifica al proveedor en la información adicional de los nuevos XML. */}
+              <div className="alert alert-info mb-4">
+                <label htmlFor="ruc-proveedor-software" className="form-label fw-semibold">RUC del proveedor de software</label>
+                <input
+                  id="ruc-proveedor-software"
+                  className="form-control"
+                  type="text"
+                  inputMode="numeric"
+                  maxLength={13}
+                  pattern="[0-9]{13}"
+                  value={rucProveedorSoftware}
+                  onChange={(event) => setRucProveedorSoftware(event.target.value.replace(/\D/g, '').slice(0, 13))}
+                  aria-describedby="proveedor-ayuda"
+                  placeholder="RUC de 13 dígitos del proveedor"
+                />
+                <small id="proveedor-ayuda">Se incluirá en facturas, notas de crédito y retenciones generadas después de guardar. Ingresa el RUC del proveedor de tu sistema de facturación.</small>
+                {!rucProveedorSoftware && <div className="mt-2 fw-semibold">Pendiente de configurar</div>}
+              </div>
               <div className="row mb-3">
                 <div className="col-md-6">
                   <div className="form-group mb-3">
@@ -543,7 +566,7 @@ export default function CompanyManager() {
                       className="form-control"
                       value={certificadoClave}
                       onChange={(e) => setCertificadoClave(e.target.value)}
-                      placeholder={certificadoClave ? '••••••••' : 'Clave de firma'}
+                      placeholder="Dejar vacío para conservar la clave guardada"
                       autoComplete="new-password"
                     />
                     <small className="text-muted">Solo cambia si necesitas actualizar la clave.</small>

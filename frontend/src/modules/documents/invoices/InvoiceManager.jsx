@@ -208,7 +208,7 @@ export default function InvoiceManager({ onRedirectToCash }) {
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || 'Ocurrio un error al facturar.');
 
-      showAlert(`Factura ${result.numero_factura} emitida correctamente.`, 'success');
+      showAlert(`Factura ${result.numero_factura} registrada. Envío automático a SRI PRUEBAS pendiente; consulta su estado antes de entregarla.`, 'success');
       setShowForm(false);
       setPendingProformaNumber('');
       fetchInvoices();

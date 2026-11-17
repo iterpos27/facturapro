@@ -4,6 +4,8 @@ const path = require('path');
 const multer = require('multer');
 const router = express.Router();
 const db = require('../db');
+const { normalizeProviderRuc } = require('../utils/sri_provider');
+const { publicCompany, certificateSecretForUpdate, environmentForCompanySave } = require('../utils/company_secrets');
 const { authenticateToken, authorizePermissions } = require('./auth');
 
 const certificatesDir = path.resolve(__dirname, '..', 'certificates');
@@ -66,7 +68,7 @@ router.get('/', async (req, res) => {
       // Retornar un objeto vacío o iniciar con valores por defecto
       return res.json(null);
     }
-    res.json(result.rows[0]);
+    res.json(publicCompany(result.rows[0]));
   } catch (error) {
     console.error('Error al obtener datos de la empresa:', error);
     res.status(500).json({ error: 'Error al consultar los datos de la empresa.' });
@@ -99,7 +101,14 @@ router.post('/', async (req, res) => {
 
   try {
     // Verificar si ya existe una empresa registrada
-    const checkCompany = await db.query('SELECT id_empresa FROM empresas LIMIT 1');
+    // Validar antes de escribir; omitir el campo conserva el valor de clientes anteriores.
+    let providerRuc;
+    try {
+      providerRuc = normalizeProviderRuc(req.body.ruc_proveedor_software);
+    } catch (error) {
+      return res.status(400).json({ error: error.message });
+    }
+    const checkCompany = await db.query('SELECT id_empresa, certificado_clave, ambiente_sri FROM empresas LIMIT 1');
     
     let result;
     if (checkCompany.rows.length > 0) {
@@ -112,15 +121,17 @@ router.post('/', async (req, res) => {
              logo_url = $8, ambiente_sri = $9, tipo_emision = $10, certificado_path = $11,
              certificado_alias = $12, certificado_clave = $13,
              sri_endpoint_recepcion = $14, sri_endpoint_autorizacion = $15,
+             ruc_proveedor_software = CASE WHEN $18 THEN $17 ELSE ruc_proveedor_software END,
              updated_at = CURRENT_TIMESTAMP
          WHERE id_empresa = $16
          RETURNING *`,
         [
           ruc, razon_social, nombre_comercial, direccion_matriz,
           obligado_contabilidad, contribuyente_especial, regimen,
-          logo_url || '', ambiente_sri || 'PRUEBAS', tipo_emision || 'NORMAL',
-          certificado_path || '', certificado_alias || '', certificado_clave || '',
+          logo_url || '', environmentForCompanySave(checkCompany.rows[0].ambiente_sri), tipo_emision || 'NORMAL',
+          certificado_path || '', certificado_alias || '', certificateSecretForUpdate(checkCompany.rows[0].certificado_clave, certificado_clave),
           sri_endpoint_recepcion || '', sri_endpoint_autorizacion || '', companyId,
+          providerRuc, Object.prototype.hasOwnProperty.call(req.body, 'ruc_proveedor_software'),
         ]
       );
     } else {
@@ -130,21 +141,22 @@ router.post('/', async (req, res) => {
           ruc, razon_social, nombre_comercial, direccion_matriz, obligado_contabilidad,
           contribuyente_especial, regimen, logo_url, ambiente_sri, tipo_emision,
           certificado_path, certificado_alias, certificado_clave,
-          sri_endpoint_recepcion, sri_endpoint_autorizacion
+          sri_endpoint_recepcion, sri_endpoint_autorizacion, ruc_proveedor_software
         )
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
          RETURNING *`,
         [
           ruc, razon_social, nombre_comercial, direccion_matriz,
           obligado_contabilidad, contribuyente_especial, regimen,
-          logo_url || '', ambiente_sri || 'PRUEBAS', tipo_emision || 'NORMAL',
+          logo_url || '', environmentForCompanySave(null), tipo_emision || 'NORMAL',
           certificado_path || '', certificado_alias || '', certificado_clave || '',
           sri_endpoint_recepcion || '', sri_endpoint_autorizacion || '',
+          providerRuc,
         ]
       );
     }
 
-    res.json(result.rows[0]);
+    res.json(publicCompany(result.rows[0]));
   } catch (error) {
     console.error('Error al guardar datos de la empresa:', error);
     res.status(500).json({ error: 'Error al procesar la configuración de la empresa.' });
@@ -220,6 +232,12 @@ router.post('/switch-environment', authenticateToken, authorizePermissions('PROD
   if (String(confirmacion || '').toUpperCase().trim() !== target) {
     return res.status(400).json({
       error: `Para cambiar a ${target} debes confirmar escribiendo exactamente "${target}" en el campo de confirmacion.`,
+    });
+  }
+
+  if (target === 'PRODUCCION') {
+    return res.status(409).json({
+      error: 'El cambio a producción está bloqueado hasta completar y aprobar la validación en pruebas.',
     });
   }
 

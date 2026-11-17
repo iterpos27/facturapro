@@ -3,7 +3,11 @@ const router = express.Router();
 const db = require('../db');
 const { authenticateToken, authorizePermissions } = require('./auth');
 const { writeAudit } = require('../utils/audit');
-const { generarClaveAccesoSRI } = require('../utils/sri_utils');
+const { generarClaveAccesoParaEmpresa } = require('../utils/sri_utils');
+const { requireSingleCompany } = require('../utils/sri_readiness');
+const { queueIssuedDocument } = require('./sri');
+const { assertLocalCancellationAllowed } = require('../utils/sri_workflow');
+const { publicCompany } = require('../utils/company_secrets');
 const { validate, schemas } = require('../middleware/validate');
 const { formatDocumentNumber, getDefaultBranch, nextDocumentSequential } = require('../services/sequential_service');
 const { recordInventoryCostMovement } = require('../services/inventory_costing');
@@ -147,7 +151,7 @@ router.get('/:id', async (req, res) => {
       payments: paymentsRes.rows,
       cobros: cobrosRes.rows,
       gestiones: gestionesRes.rows,
-      company: companyRes.rows[0] || null,
+      company: companyRes.rows[0] ? publicCompany(companyRes.rows[0]) : null,
     });
   } catch (error) {
     console.error('Error al obtener detalle de factura:', error);
@@ -305,16 +309,17 @@ router.post('/', validate(schemas.createInvoice), async (req, res) => {
       ? 'PAGADA'
       : 'PENDIENTE';
 
-    const companyRes = await client.query('SELECT ruc FROM empresas LIMIT 1');
+    const companyRes = await client.query('SELECT ruc, ambiente_sri FROM empresas ORDER BY id_empresa LIMIT 2');
+    requireSingleCompany(companyRes.rows);
     if (companyRes.rows.length === 0 || !companyRes.rows[0].ruc) {
       throw new Error('Configure el RUC de la empresa antes de emitir facturas.');
     }
 
-    const accessKey = generarClaveAccesoSRI({
+    const accessKey = generarClaveAccesoParaEmpresa({
       fechaEmision: new Date(),
       tipoComprobante: '01',
       ruc: companyRes.rows[0].ruc,
-      ambiente: '1',
+      ambiente_sri: companyRes.rows[0].ambiente_sri,
       establecimiento: codigo_establecimiento,
       puntoEmision: punto_emision,
       secuencial: seqActual,
@@ -418,8 +423,9 @@ router.post('/', validate(schemas.createInvoice), async (req, res) => {
       detail: { numero_factura: numeroFactura, id_proforma: id_proforma || null, total: totalFactura, saldo, tipo_venta: tipoVenta, dias_credito: diasCredito },
     });
 
+    await queueIssuedDocument(client, 'invoice', id_factura);
     await client.query('COMMIT');
-    res.status(201).json(invoiceInserted.rows[0]);
+    res.status(201).json({ ...invoiceInserted.rows[0], sri_estado: 'PENDIENTE_ENVIO' });
   } catch (error) {
     await client.query('ROLLBACK');
     console.error('Error al registrar factura:', error);
@@ -441,11 +447,13 @@ router.put('/:id/cancel', authorizePermissions('DOCUMENT_CANCEL'), async (req, r
   try {
     await client.query('BEGIN');
 
-    const factRes = await client.query('SELECT * FROM facturas WHERE id_factura = $1', [id]);
+    const factRes = await client.query('SELECT * FROM facturas WHERE id_factura = $1 FOR UPDATE', [id]);
     if (factRes.rows.length === 0) {
       throw new Error('Factura no encontrada.');
     }
     const factura = factRes.rows[0];
+    const sriRes = await client.query("SELECT estado FROM sri_comprobantes WHERE tipo_comprobante = '01' AND id_documento = $1 FOR UPDATE", [id]);
+    assertLocalCancellationAllowed(factura, sriRes.rows[0]);
 
     if (factura.estado === 'ANULADA') {
       throw new Error('La factura ya se encuentra anulada.');

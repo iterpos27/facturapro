@@ -11,6 +11,7 @@ import {
 import { apiFetch, apiUrl } from '../../../lib/api';
 import { printDocument } from '../../../lib/printDocument';
 import { openRidePdf } from '../../../lib/rides';
+import { canProcessSri, canCancelLocally } from '../../../lib/sriStates';
 import DocumentActionButtons from '../../../shared/DocumentActionButtons';
 import WithholdingRideModal from './WithholdingRideModal';
 
@@ -20,6 +21,8 @@ const getSriBadgeClass = (estado) => {
   const value = String(estado || 'PENDIENTE').toUpperCase();
   if (value === 'AUTORIZADO') return 'bg-success';
   if (value === 'NO_AUTORIZADO' || value === 'DEVUELTO') return 'bg-danger';
+  if (value === 'ENVIANDO') return 'bg-info text-dark';
+  if (value === 'PENDIENTE_ENVIO') return 'bg-warning text-dark';
   if (value === 'FIRMADO' || value === 'RECIBIDO' || value === 'GENERADO') return 'bg-warning text-dark';
   return 'bg-secondary';
 };
@@ -347,7 +350,7 @@ export default function WithholdingsManager() {
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || 'Ocurrió un error al emitir la retención.');
 
-      showAlert('Comprobante de retención emitido con éxito.', 'success');
+      showAlert('Retención registrada. Envío automático a SRI PRUEBAS pendiente; consulta su estado antes de entregarla.', 'success');
       setShowForm(false);
       setSelectedPurchaseId('');
       setSelectedPurchaseData(null);
@@ -636,9 +639,9 @@ export default function WithholdingsManager() {
                               },
                               { label: 'PDF', icon: cilFile, tone: 'primary', onClick: () => openRidePdf('withholding', w.id_retencion) },
                               { label: 'XML SRI', icon: cilDescription, tone: 'warning', onClick: () => handleGenerateSriXml(w) },
-                              w.estado !== 'ANULADA' && w.sri_estado !== 'AUTORIZADO' && { label: 'Procesar SRI', icon: cilCloudUpload, tone: 'success', onClick: () => handleProcessSri(w) },
-                              { label: 'Enviar email', icon: cilEnvelopeClosed, tone: 'secondary', onClick: () => handleEmailSri(w) },
-                              w.estado !== 'ANULADA' && { label: 'Anular', icon: cilTrash, tone: 'danger', onClick: () => handleCancelWithholding(w) },
+                              canProcessSri(w) && { label: 'Procesar SRI', icon: cilCloudUpload, tone: 'success', onClick: () => handleProcessSri(w) },
+                              w.sri_estado === 'AUTORIZADO' && { label: 'Enviar email', icon: cilEnvelopeClosed, tone: 'secondary', onClick: () => handleEmailSri(w) },
+                              canCancelLocally(w) && { label: 'Anular', icon: cilTrash, tone: 'danger', onClick: () => handleCancelWithholding(w) },
                             ]}
                           />
                         </td>
@@ -679,15 +682,15 @@ export default function WithholdingsManager() {
                       <button className="btn btn-warning" onClick={() => handleGenerateSriXml(w)}>
                         XML SRI
                       </button>
-                      {w.estado !== 'ANULADA' && w.sri_estado !== 'AUTORIZADO' && (
+                      {canProcessSri(w) && (
                         <button className="btn btn-success" onClick={() => handleProcessSri(w)}>
                           Procesar SRI
                         </button>
                       )}
-                      <button className="btn btn-secondary" onClick={() => handleEmailSri(w)}>
+                      {w.sri_estado === 'AUTORIZADO' && <button className="btn btn-secondary" onClick={() => handleEmailSri(w)}>
                         Email
-                      </button>
-                      {w.estado !== 'ANULADA' && (
+                      </button>}
+                      {canCancelLocally(w) && (
                         <button className="btn btn-danger" onClick={() => handleCancelWithholding(w)}>
                           Anular
                         </button>

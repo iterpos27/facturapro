@@ -8,6 +8,7 @@ import {
   cilTrash,
 } from '@coreui/icons';
 import { openRidePdf } from '../../../../lib/rides';
+import { canProcessSri, canCancelLocally } from '../../../../lib/sriStates';
 import DocumentActionButtons from '../../../../shared/DocumentActionButtons';
 
 const getStatusBadgeClass = (status) => {
@@ -19,6 +20,8 @@ const getStatusBadgeClass = (status) => {
 const getSriBadgeClass = (status) => {
   if (status === 'GENERADO') return 'bg-primary';
   if (status === 'FIRMADO') return 'bg-info';
+  if (status === 'PENDIENTE_ENVIO') return 'bg-warning text-dark';
+  if (status === 'ENVIANDO') return 'bg-info text-dark';
   if (status === 'RECIBIDO') return 'bg-warning';
   if (status === 'AUTORIZADO') return 'bg-success';
   if (status === 'DEVUELTO' || status === 'ERROR' || status === 'NO_AUTORIZADO') return 'bg-danger';
@@ -105,9 +108,9 @@ export default function InvoiceTable({
                       { label: 'Ver RIDE', icon: cilPrint, tone: 'info', onClick: () => onViewRide(invoice.id_factura) },
                       { label: 'PDF', icon: cilFile, tone: 'primary', onClick: () => openRidePdf('invoice', invoice.id_factura) },
                       invoice.estado !== 'ANULADA' && { label: 'XML SRI', icon: cilDescription, tone: 'warning', onClick: () => onGenerateSriTestXml(invoice.id_factura) },
-                      invoice.estado !== 'ANULADA' && { label: 'Procesar SRI', icon: cilCloudUpload, tone: 'success', onClick: () => onProcessSriTest(invoice.id_factura) },
-                      invoice.estado !== 'ANULADA' && { label: 'Enviar email', icon: cilEnvelopeClosed, tone: 'secondary', onClick: () => onEmailSri(invoice) },
-                      invoice.estado !== 'ANULADA' && { label: 'Anular', icon: cilTrash, tone: 'danger', onClick: () => onCancel(invoice.id_factura, invoice.numero_factura) },
+                      canProcessSri(invoice) && { label: 'Procesar SRI', icon: cilCloudUpload, tone: 'success', onClick: () => onProcessSriTest(invoice.id_factura) },
+                      invoice.sri_estado === 'AUTORIZADO' && { label: 'Enviar email', icon: cilEnvelopeClosed, tone: 'secondary', onClick: () => onEmailSri(invoice) },
+                      canCancelLocally(invoice) && { label: 'Anular', icon: cilTrash, tone: 'danger', onClick: () => onCancel(invoice.id_factura, invoice.numero_factura) },
                     ]}
                   />
                 </td>
@@ -169,18 +172,18 @@ export default function InvoiceTable({
                   <button className="btn btn-warning" onClick={() => onGenerateSriTestXml(invoice.id_factura)}>
                     XML SRI
                   </button>
-                  <button className="btn btn-success" onClick={() => onProcessSriTest(invoice.id_factura)}>
+                  {canProcessSri(invoice) && <button className="btn btn-success" onClick={() => onProcessSriTest(invoice.id_factura)}>
                     Procesar SRI
-                  </button>
-                  <button className="btn btn-secondary" onClick={() => onEmailSri(invoice)}>
+                  </button>}
+                  {invoice.sri_estado === 'AUTORIZADO' && <button className="btn btn-secondary" onClick={() => onEmailSri(invoice)}>
                     Email
-                  </button>
-                  <button
+                  </button>}
+                  {canCancelLocally(invoice) && <button
                     className="btn btn-danger"
                     onClick={() => onCancel(invoice.id_factura, invoice.numero_factura)}
                   >
                     Anular
-                  </button>
+                  </button>}
                 </>
               )}
             </div>

@@ -249,6 +249,10 @@ export default function ReportsDashboard() {
           <FilterSelect label="Cliente" value={filters.id_cliente} onChange={(value) => updateFilter('id_cliente', value)} options={meta.clients.map((client) => ({ value: client.id, label: `${client.name} (${client.identification_number})` }))} />
           <FilterSelect label="Proveedor" value={filters.id_proveedor} onChange={(value) => updateFilter('id_proveedor', value)} options={meta.suppliers.map((supplier) => ({ value: supplier.id_proveedor, label: `${supplier.nombre} (${supplier.identificacion})` }))} />
         </div>
+        <p className="small text-secondary mt-2 mb-0">
+          Cliente y caja filtran ventas y notas; proveedor filtra compras y retenciones.
+          Proformas, inventario y antigüedad de saldos muestran cifras globales.
+        </p>
       </div>
 
       {loading ? (

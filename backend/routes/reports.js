@@ -183,11 +183,16 @@ router.get('/summary', async (req, res) => {
       db.query(`
         SELECT DATE_TRUNC('month', f.fecha_emision)::date AS periodo,
                COALESCE(SUM(f.total), 0) AS ventas,
-               COALESCE(SUM(fd.cantidad * COALESCE(p.costo_promedio, p.precio_compra, 0)), 0) AS costo,
-               COALESCE(SUM(f.total), 0) - COALESCE(SUM(fd.cantidad * COALESCE(p.costo_promedio, p.precio_compra, 0)), 0) AS utilidad
+               COALESCE(SUM(costos.costo), 0) AS costo,
+               COALESCE(SUM(f.total), 0) - COALESCE(SUM(costos.costo), 0) AS utilidad
         FROM facturas f
-        LEFT JOIN factura_detalles fd ON f.id_factura = fd.id_factura
-        LEFT JOIN productos p ON fd.id_producto = p.id_producto
+        LEFT JOIN (
+          SELECT fd.id_factura,
+                 SUM(fd.cantidad * COALESCE(p.costo_promedio, p.precio_compra, 0)) AS costo
+          FROM factura_detalles fd
+          JOIN productos p ON fd.id_producto = p.id_producto
+          GROUP BY fd.id_factura
+        ) costos ON f.id_factura = costos.id_factura
         ${invoiceFilter.clause ? `${invoiceFilter.clause} AND f.estado = 'EMITIDA'` : "WHERE f.estado = 'EMITIDA'"}
         GROUP BY DATE_TRUNC('month', f.fecha_emision)::date
         ORDER BY periodo DESC

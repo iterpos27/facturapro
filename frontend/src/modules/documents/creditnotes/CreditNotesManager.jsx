@@ -11,6 +11,7 @@ import {
 import { apiFetch, apiUrl } from '../../../lib/api';
 import { printDocument } from '../../../lib/printDocument';
 import { openRidePdf } from '../../../lib/rides';
+import { canProcessSri, canCancelLocally } from '../../../lib/sriStates';
 import DocumentActionButtons from '../../../shared/DocumentActionButtons';
 import CreditNoteRideModal from './CreditNoteRideModal';
 
@@ -21,6 +22,8 @@ const getSriBadgeClass = (estado) => {
   const value = String(estado || 'PENDIENTE').toUpperCase();
   if (value === 'AUTORIZADO') return 'bg-success';
   if (value === 'NO_AUTORIZADO' || value === 'DEVUELTO') return 'bg-danger';
+  if (value === 'ENVIANDO') return 'bg-info text-dark';
+  if (value === 'PENDIENTE_ENVIO') return 'bg-warning text-dark';
   if (value === 'FIRMADO' || value === 'RECIBIDO' || value === 'GENERADO') return 'bg-warning text-dark';
   return 'bg-secondary';
 };
@@ -353,7 +356,7 @@ export default function CreditNotesManager() {
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || 'Ocurrió un error al emitir la nota de crédito.');
 
-      showAlert('Nota de crédito emitida con éxito.', 'success');
+      showAlert('Nota de crédito registrada. Envío automático a SRI PRUEBAS pendiente; consulta su estado antes de entregarla.', 'success');
       setShowForm(false);
       setSelectedInvoiceId('');
       setSelectedInvoiceData(null);
@@ -610,9 +613,9 @@ export default function CreditNotesManager() {
                               },
                               { label: 'PDF', icon: cilFile, tone: 'primary', onClick: () => openRidePdf('credit-note', nc.id_nota_credito) },
                               { label: 'XML SRI', icon: cilDescription, tone: 'warning', onClick: () => handleGenerateSriXml(nc) },
-                              nc.estado !== 'ANULADA' && nc.sri_estado !== 'AUTORIZADO' && { label: 'Procesar SRI', icon: cilCloudUpload, tone: 'success', onClick: () => handleProcessSri(nc) },
-                              { label: 'Enviar email', icon: cilEnvelopeClosed, tone: 'secondary', onClick: () => handleEmailSri(nc) },
-                              nc.estado !== 'ANULADA' && { label: 'Anular', icon: cilTrash, tone: 'danger', onClick: () => handleCancelNc(nc) },
+                              canProcessSri(nc) && { label: 'Procesar SRI', icon: cilCloudUpload, tone: 'success', onClick: () => handleProcessSri(nc) },
+                              nc.sri_estado === 'AUTORIZADO' && { label: 'Enviar email', icon: cilEnvelopeClosed, tone: 'secondary', onClick: () => handleEmailSri(nc) },
+                              canCancelLocally(nc) && { label: 'Anular', icon: cilTrash, tone: 'danger', onClick: () => handleCancelNc(nc) },
                             ]}
                           />
                         </td>
@@ -653,15 +656,15 @@ export default function CreditNotesManager() {
                       <button className="btn btn-warning" onClick={() => handleGenerateSriXml(nc)}>
                         XML SRI
                       </button>
-                      {nc.estado !== 'ANULADA' && nc.sri_estado !== 'AUTORIZADO' && (
+                      {canProcessSri(nc) && (
                         <button className="btn btn-success" onClick={() => handleProcessSri(nc)}>
                           Procesar SRI
                         </button>
                       )}
-                      <button className="btn btn-secondary" onClick={() => handleEmailSri(nc)}>
+                      {nc.sri_estado === 'AUTORIZADO' && <button className="btn btn-secondary" onClick={() => handleEmailSri(nc)}>
                         Email
-                      </button>
-                      {nc.estado !== 'ANULADA' && (
+                      </button>}
+                      {canCancelLocally(nc) && (
                         <button className="btn btn-danger" onClick={() => handleCancelNc(nc)}>
                           Anular
                         </button>

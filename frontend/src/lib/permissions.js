@@ -39,6 +39,8 @@ export const TAB_SECTION_MAP = {
 /** Permisos de módulo por nombre de rol */
 export const ROLE_PERMISSIONS = {
   ADMINISTRADOR: {
+    sri: true,
+    sriProcess: true,
     clients: true,
     suppliers: true,
     products: true,
@@ -104,6 +106,8 @@ export const ROLE_PERMISSIONS = {
 };
 
 const PERMISSION_MODULE_MAP = {
+  SRI_ELECTRONIC_BILLING: ['sri'],
+  SRI_PROCESS: ['sriProcess'],
   CLIENTS_CRUD: ['clients'],
   SUPPLIERS_CRUD: ['suppliers'],
   PRODUCTS_CRUD: ['products'],

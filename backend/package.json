@@ -5,6 +5,9 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
+    "test:sri-provider": "node --test tests/sri_provider.test.js",
+    "test:sri": "node --test tests/sri_*.test.js",
+    "db:migrate:sri-provider": "node migrations/migrate_phase22_sri_provider.js",
     "db:init": "node scripts/init_db.js",
     "db:migrate": "node migrations/migrate.js",
     "db:migrate:rename": "node migrations/migrate_rename.js",

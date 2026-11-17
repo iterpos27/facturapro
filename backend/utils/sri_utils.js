@@ -4,6 +4,21 @@
  * para la fase de certificado digital.
  */
 
+const { buildProviderXml } = require('./sri_provider');
+const { ecuadorDate, validateAccessKey } = require('./sri_workflow');
+
+/** Conserva fechas civiles y convierte instantes al calendario de Ecuador. */
+function sriDateParts(value = new Date()) {
+  const civil = typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)
+    ? value : ecuadorDate(new Date(value));
+  const parsed = new Date(`${civil}T12:00:00Z`);
+  if (!Number.isFinite(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== civil) {
+    throw new Error('Fecha de emisión inválida.');
+  }
+  const [yyyy, mm, dd] = civil.split('-');
+  return { yyyy, mm, dd };
+}
+
 function calcularModulo11(claveSinDigito) {
   let suma = 0;
   let factor = 2;
@@ -29,10 +44,7 @@ function generarClaveAccesoSRI({
   codigoNumerico = '12345678',
   tipoEmision = '1',
 }) {
-  const dateObj = new Date(fechaEmision);
-  const dd = String(dateObj.getDate()).padStart(2, '0');
-  const mm = String(dateObj.getMonth() + 1).padStart(2, '0');
-  const yyyy = String(dateObj.getFullYear());
+  const { dd, mm, yyyy } = sriDateParts(fechaEmision);
   const fechaStr = `${dd}${mm}${yyyy}`;
 
   const rucStr = String(ruc || '').trim();
@@ -70,15 +82,16 @@ function escapeXml(value) {
 }
 
 function formatSriDate(value) {
-  const date = value ? new Date(value) : new Date();
-  const dd = String(date.getDate()).padStart(2, '0');
-  const mm = String(date.getMonth() + 1).padStart(2, '0');
-  const yyyy = String(date.getFullYear());
+  const { dd, mm, yyyy } = sriDateParts(value || new Date());
   return `${dd}/${mm}/${yyyy}`;
 }
 
 function getAmbienteCode(value) {
   return normalizeText(value, 'PRUEBAS').toUpperCase() === 'PRODUCCION' ? '2' : '1';
+}
+
+function generarClaveAccesoParaEmpresa({ ambiente_sri, ...documento }) {
+  return generarClaveAccesoSRI({ ...documento, ambiente: getAmbienteCode(ambiente_sri) });
 }
 
 function getTipoIdentificacion(identification) {
@@ -107,6 +120,19 @@ function parseSerie(numeroFactura = '') {
   };
 }
 
+function claveAccesoCoincideDocumento(clave, { fechaEmision, tipoComprobante, ruc, ambienteCode, serie }) {
+  if (!claveAccesoPerteneceAlRuc(clave, ruc)) return false;
+  const { dd, mm, yyyy } = sriDateParts(fechaEmision);
+  const prefix = `${dd}${mm}${yyyy}${tipoComprobante}${ruc}${ambienteCode}${serie.estab}${serie.ptoEmi}${serie.secuencial}`;
+  if (clave.slice(0, 39) !== prefix) return false;
+  try {
+    validateAccessKey(clave);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function buildFacturaXml({ invoice, details = [], payments = [], company, ambiente = 'PRUEBAS' }) {
   const serie = parseSerie(invoice.numero_factura);
   const ambienteCode = getAmbienteCode(ambiente);
@@ -116,7 +142,7 @@ function buildFacturaXml({ invoice, details = [], payments = [], company, ambien
     throw new Error('Configure un RUC de empresa valido para generar XML SRI.');
   }
   const claveActual = normalizeText(invoice.clave_acceso);
-  const claveAcceso = claveAccesoPerteneceAlRuc(claveActual, ruc) ? claveActual : generarClaveAccesoSRI({
+  const claveAcceso = claveAccesoCoincideDocumento(claveActual, { fechaEmision: invoice.fecha_emision || new Date(), tipoComprobante: '01', ruc, ambienteCode, serie }) ? claveActual : generarClaveAccesoSRI({
     fechaEmision: invoice.fecha_emision || new Date(),
     tipoComprobante: '01',
     ruc,
@@ -234,6 +260,7 @@ function buildFacturaXml({ invoice, details = [], payments = [], company, ambien
   <infoAdicional>
     <campoAdicional nombre="Email">${escapeXml(invoice.cliente_email || 'SIN EMAIL')}</campoAdicional>
     <campoAdicional nombre="Telefono">${escapeXml(invoice.cliente_telefono || 'SIN TELEFONO')}</campoAdicional>
+    ${buildProviderXml(company)}
   </infoAdicional>
 </factura>`;
 
@@ -250,7 +277,7 @@ function buildNotaCreditoXml({ creditNote, details = [], company, ambiente = 'PR
   }
 
   const claveActual = normalizeText(creditNote.clave_acceso);
-  const claveAcceso = claveAccesoPerteneceAlRuc(claveActual, ruc) ? claveActual : generarClaveAccesoSRI({
+  const claveAcceso = claveAccesoCoincideDocumento(claveActual, { fechaEmision: creditNote.fecha_emision || new Date(), tipoComprobante: '04', ruc, ambienteCode, serie }) ? claveActual : generarClaveAccesoSRI({
     fechaEmision: creditNote.fecha_emision || new Date(),
     tipoComprobante: '04',
     ruc,
@@ -348,6 +375,7 @@ function buildNotaCreditoXml({ creditNote, details = [], company, ambiente = 'PR
   <infoAdicional>
     <campoAdicional nombre="Email">${escapeXml(creditNote.cliente_email || 'SIN EMAIL')}</campoAdicional>
     <campoAdicional nombre="Telefono">${escapeXml(creditNote.cliente_telefono || 'SIN TELEFONO')}</campoAdicional>
+    ${buildProviderXml(company)}
   </infoAdicional>
 </notaCredito>`;
 
@@ -364,7 +392,7 @@ function buildRetencionXml({ withholding, details = [], company, ambiente = 'PRU
   }
 
   const claveActual = normalizeText(withholding.clave_acceso);
-  const claveAcceso = claveAccesoPerteneceAlRuc(claveActual, ruc) ? claveActual : generarClaveAccesoSRI({
+  const claveAcceso = claveAccesoCoincideDocumento(claveActual, { fechaEmision: withholding.fecha_emision || new Date(), tipoComprobante: '07', ruc, ambienteCode, serie }) ? claveActual : generarClaveAccesoSRI({
     fechaEmision: withholding.fecha_emision || new Date(),
     tipoComprobante: '07',
     ruc,
@@ -379,8 +407,8 @@ function buildRetencionXml({ withholding, details = [], company, ambiente = 'PRU
     return digits || normalizeText(value);
   };
   const periodDate = withholding.fecha_compra || withholding.fecha_emision || new Date();
-  const dateObj = new Date(periodDate);
-  const periodoFiscal = `${String(dateObj.getMonth() + 1).padStart(2, '0')}/${dateObj.getFullYear()}`;
+  const period = sriDateParts(periodDate);
+  const periodoFiscal = `${period.mm}/${period.yyyy}`;
 
   const impuestosXml = details.map((detail) => {
     const isIva = normalizeText(detail.impuesto).toUpperCase().includes('IVA');
@@ -423,6 +451,7 @@ function buildRetencionXml({ withholding, details = [], company, ambiente = 'PRU
   </infoCompRetencion>
   <impuestos>${impuestosXml}
   </impuestos>
+  ${company.ruc_proveedor_software ? `<infoAdicional>${buildProviderXml(company)}</infoAdicional>` : ''}
 </comprobanteRetencion>`;
 
   return { xml, claveAcceso, ambienteCode };
@@ -448,6 +477,7 @@ function simularAutorizacionSRI(claveAcceso) {
 
 module.exports = {
   generarClaveAccesoSRI,
+  generarClaveAccesoParaEmpresa,
   claveAccesoPerteneceAlRuc,
   buildFacturaXml,
   buildNotaCreditoXml,

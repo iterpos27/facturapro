@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const PDFDocument = require('pdfkit');
+const { PassThrough } = require('stream');
 const db = require('../db');
 
 const money = (value) => `$${(Number(value || 0) || 0).toFixed(2)}`;
@@ -75,8 +76,8 @@ async function loadInvoice(id) {
     subjectAddress: doc.cliente_direccion,
     subjectEmail: doc.cliente_email,
     issueDate: doc.fecha_emision,
-    authorizationDate: doc.sri_fecha_autorizacion || doc.fecha_emision,
-    authorization: doc.sri_numero_autorizacion || doc.clave_acceso || 'PENDIENTE SRI',
+    authorizationDate: doc.sri_numero_autorizacion ? (doc.sri_fecha_autorizacion || null) : null,
+    authorization: doc.sri_numero_autorizacion || 'PENDIENTE SRI',
     accessKey: doc.clave_acceso || '',
     environment: doc.sri_ambiente || 'PRUEBAS',
     status: doc.estado,
@@ -200,8 +201,8 @@ async function loadCreditNote(id) {
     subjectAddress: doc.cliente_direccion,
     subjectEmail: doc.cliente_email,
     issueDate: doc.fecha_emision,
-    authorizationDate: doc.sri_fecha_autorizacion || doc.fecha_emision,
-    authorization: doc.sri_numero_autorizacion || doc.clave_acceso || 'PENDIENTE SRI',
+    authorizationDate: doc.sri_numero_autorizacion ? (doc.sri_fecha_autorizacion || null) : null,
+    authorization: doc.sri_numero_autorizacion || 'PENDIENTE SRI',
     accessKey: doc.clave_acceso || '',
     environment: doc.sri_ambiente || 'PRUEBAS',
     status: doc.estado,
@@ -211,7 +212,7 @@ async function loadCreditNote(id) {
       qty(item.cantidad),
       money(item.precio_unitario),
       money(item.valor_iva),
-      money(item.precio_total),
+      money(Number(item.precio_total || 0) + Number(item.valor_iva || 0)),
     ]),
     headers: ['Codigo', 'Detalle', 'Cant.', 'PVP', 'IVA', 'Total'],
     totals: [
@@ -253,8 +254,8 @@ async function loadWithholding(id) {
     subjectAddress: doc.proveedor_direccion,
     subjectEmail: doc.proveedor_email,
     issueDate: doc.fecha_emision,
-    authorizationDate: doc.sri_fecha_autorizacion || doc.fecha_emision,
-    authorization: doc.sri_numero_autorizacion || doc.clave_acceso || 'PENDIENTE SRI',
+    authorizationDate: doc.sri_numero_autorizacion ? (doc.sri_fecha_autorizacion || null) : null,
+    authorization: doc.sri_numero_autorizacion || 'PENDIENTE SRI',
     accessKey: doc.clave_acceso || '',
     environment: doc.sri_ambiente || 'PRUEBAS',
     status: doc.estado,
@@ -439,37 +440,60 @@ function generateRidePdf({ company, ride }, stream) {
 
   let y = subjectY + 60;
   const colWidths = ride.headers.length === 6 ? [52, 220, 42, 56, 56, 62] : [92, 78, 92, 75, 92];
-  const rowH = 18;
-  doc.font('Helvetica-Bold').fontSize(7);
-  let x = left;
-  ride.headers.forEach((header, index) => {
-    drawBox(doc, x, y, colWidths[index], rowH);
-    doc.text(header, x + 3, y + 5, { width: colWidths[index] - 6, align: 'center' });
-    x += colWidths[index];
-  });
-  y += rowH;
+  const tableHeaderH = 18;
+  const contentBottom = 754;
+  const drawTableHeader = () => {
+    doc.font('Helvetica-Bold').fontSize(7);
+    let x = left;
+    ride.headers.forEach((header, index) => {
+      drawBox(doc, x, y, colWidths[index], tableHeaderH);
+      doc.text(header, x + 3, y + 5, { width: colWidths[index] - 6, align: 'center' });
+      x += colWidths[index];
+    });
+    y += tableHeaderH;
+  };
+  drawTableHeader();
 
-  doc.font('Helvetica').fontSize(7);
   ride.rows.forEach((row) => {
-    if (y > 700) {
+    doc.font('Helvetica').fontSize(7);
+    const rowH = Math.max(18, ...row.map((cell, index) =>
+      Math.ceil(doc.heightOfString(String(cell), { width: colWidths[index] - 6 }) + 8)));
+    if (y + rowH > contentBottom) {
       doc.addPage();
       y = 36;
+      drawTableHeader();
+      doc.font('Helvetica').fontSize(7);
     }
-    x = left;
+    let x = left;
     row.forEach((cell, index) => {
       drawBox(doc, x, y, colWidths[index], rowH);
-      doc.text(String(cell), x + 3, y + 5, { width: colWidths[index] - 6, align: index >= row.length - 3 ? 'right' : 'left' });
+      doc.text(String(cell), x + 3, y + 4, {
+        width: colWidths[index] - 6,
+        height: rowH - 8,
+        align: index >= row.length - 3 ? 'right' : 'left',
+      });
       x += colWidths[index];
     });
     y += rowH;
   });
 
+  doc.font('Helvetica').fontSize(7);
+  const infoLines = ride.info.map(([label, value]) => `${label}: ${text(value)}`);
+  const infoHeights = infoLines.map((line) => Math.ceil(doc.heightOfString(line, { width: 246 }) + 3));
+  const infoH = Math.max(86, 28 + infoHeights.reduce((sum, height) => sum + height, 0));
+  const finalH = Math.max(infoH, ride.totals.length * 14) + (ride.status === 'ANULADA' ? 32 : 0);
+  if (y + 10 + finalH > contentBottom) {
+    doc.addPage();
+    y = 36;
+  }
   y += 10;
-  drawBox(doc, left, y, 260, 86);
+  drawBox(doc, left, y, 260, infoH);
   doc.font('Helvetica-Bold').text('Info. adicional', left + 7, y + 8);
   doc.font('Helvetica');
-  ride.info.forEach(([label, value], index) => {
-    doc.text(`${label}: ${text(value)}`, left + 7, y + 22 + index * 12, { width: 246 });
+  let infoY = y + 22;
+  infoLines.forEach((line, index) => {
+    doc.text(line, left + 7, infoY, { width: 246 });
+    infoY += infoHeights[index];
   });
 
   const totalsX = left + 300;
@@ -482,7 +506,7 @@ function generateRidePdf({ company, ride }, stream) {
   });
 
   if (ride.status === 'ANULADA') {
-    doc.fillColor('#b91c1c').font('Helvetica-Bold').fontSize(12).text('DOCUMENTO ANULADO', left, y + 100, { width: pageWidth, align: 'center' });
+    doc.fillColor('#b91c1c').font('Helvetica-Bold').fontSize(12).text('DOCUMENTO ANULADO', left, y + infoH + 10, { width: pageWidth, align: 'center' });
     doc.fillColor('#111');
   }
 
@@ -490,9 +514,23 @@ function generateRidePdf({ company, ride }, stream) {
   doc.end();
 }
 
+async function renderRidePdfBuffer(payload) {
+  const stream = new PassThrough();
+  const chunks = [];
+  stream.on('data', (chunk) => chunks.push(chunk));
+  const done = new Promise((resolve, reject) => {
+    stream.once('end', resolve);
+    stream.once('error', reject);
+  });
+  generateRidePdf(payload, stream);
+  await done;
+  return Buffer.concat(chunks);
+}
+
 module.exports = {
   loadRide,
   renderRideHtml,
   generateRidePdf,
+  renderRidePdfBuffer,
   normalizeType,
 };

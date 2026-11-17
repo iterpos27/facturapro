@@ -23,6 +23,7 @@ const UserManager        = lazy(() => import('../modules/administration/users/Us
 const AuditManager       = lazy(() => import('../modules/administration/audit/AuditManager'));
 const ReportsDashboard   = lazy(() => import('../modules/reports/ReportsDashboard'));
 const BanksManager       = lazy(() => import('../modules/administration/banks/BanksManager'));
+const SriMonitor         = lazy(() => import('../modules/documents/sri/SriMonitor'));
 
 /** Spinner de carga mientras se descarga el chunk del módulo */
 function ModuleLoader() {
@@ -63,6 +64,7 @@ export default function AppContent({ permissions, currentUser, onNavigate }) {
         <Route path="/cuentas-pagar" element={permissions.purchases ? <PayablesManager /> : <AccessDenied onBack={() => onNavigate('/')} />} />
 
         {/* Documentos */}
+        <Route path="/sri" element={permissions.sri ? <SriMonitor canProcess={permissions.sriProcess} /> : <AccessDenied onBack={() => onNavigate('/')} />} />
         <Route path="/proformas"       element={permissions.proformas    ? <ProformaManager onInvoiceProforma={() => onNavigate('/facturas')} /> : <AccessDenied onBack={() => onNavigate('/')} />} />
         <Route path="/facturas"        element={permissions.invoices     ? <InvoiceManager onRedirectToCash={() => onNavigate('/caja')} />       : <AccessDenied onBack={() => onNavigate('/')} />} />
         <Route path="/cuentas-cobrar"  element={permissions.receivables  ? <ReceivablesManager />  : <AccessDenied onBack={() => onNavigate('/')} />} />

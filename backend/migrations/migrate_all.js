@@ -30,6 +30,7 @@ const phases = [
   { name: 'Phase 19 - Kardex valorizado y costo promedio', file: './migrate_phase19_inventory_costing' },
   { name: 'Phase 20 - Preproduccion, bancos y permisos finos', file: './migrate_phase20_preproduction' },
   { name: 'Phase 21 - Longitudes SRI flexibles', file: './migrate_phase21_sri_field_lengths' },
+  { name: 'Phase 22 - RUC del proveedor SRI', file: './migrate_phase22_sri_provider' },
 ];
 
 async function runAll() {

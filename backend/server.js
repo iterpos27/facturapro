@@ -106,4 +106,5 @@ app.use((err, req, res, _next) => {
 
 app.listen(PORT, () => {
   logger.info(`Servidor corriendo en http://localhost:${PORT}`);
+  require('./services/sri_auto_dispatch').startSriDispatchWorker();
 });
